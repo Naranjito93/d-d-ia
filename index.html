@@ -159,45 +159,55 @@
         <main class="flex-1 overflow-hidden relative">
             
             <!-- SCREEN 1: MAIN MENU & LOBBY SYSTEM -->
-            <section id="screen-main-menu" class="h-full flex items-center justify-center p-6 parchment-bg">
-                <div class="max-w-md w-full bg-dnd-panel border-2 border-dnd-gold/40 rounded-xl p-8 shadow-2xl text-center space-y-6">
+        <section id="screen-main-menu" class="h-full flex items-center justify-center p-6 parchment-bg">
+            <div class="max-w-md w-full bg-dnd-panel border-2 border-dnd-gold/40 rounded-xl p-8 shadow-2xl text-center space-y-6">
+                <div class="space-y-2">
+                    <i class="fa-solid fa-dice-d20 text-6xl text-dnd-gold mb-2 hover:rotate-180 transition-transform duration-700 cursor-pointer"></i>
+                    <h2 class="font-medieval text-3xl text-white font-bold">Mesa Virtual D&D 5e</h2>
+                    <p class="text-gray-400 text-sm">Dirigido por una Inteligencia Artificial en Tiempo Real</p>
+                </div>
+
+                <div class="space-y-4 pt-2">
                     <div class="space-y-2">
-                        <i class="fa-solid fa-dice-d20 text-6xl text-dnd-gold mb-2 hover:rotate-180 transition-transform duration-700 cursor-pointer"></i>
-                        <h2 class="font-medieval text-3xl text-white font-bold">Mesa Virtual D&D 5e</h2>
-                        <p class="text-gray-400 text-sm">Dirigido por una Inteligencia Artificial en Tiempo Real</p>
+                        <label class="block text-left text-xs uppercase text-gray-400 font-bold">Nombre del Jugador</label>
+                        <input type="text" id="input-player-name" placeholder="Ej. Elminster el Sabio" class="w-full bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-dnd-gold text-sm">
                     </div>
 
-                    <div class="space-y-4 pt-4">
-                        <div class="space-y-2">
-                            <label class="block text-left text-xs uppercase text-gray-400 font-bold">Nombre del Jugador</label>
-                            <input type="text" id="input-player-name" placeholder="Ej. Elminster el Sabio" class="w-full bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-dnd-gold text-sm">
+                    <!-- Configuración de API Key para ejecuciones externas (GitHub Pages) -->
+                    <div class="space-y-1 text-left bg-black/40 p-3 rounded-lg border border-dnd-gold/20">
+                        <label class="block text-xs uppercase text-dnd-gold font-bold flex justify-between">
+                            <span>Clave API Gemini (IA)</span>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-gray-400 hover:text-white underline text-[10px]">Obtener clave gratis</a>
+                        </label>
+                        <input type="password" id="input-api-key" placeholder="Pega tu clave AI Studio aquí" class="w-full bg-black/70 border border-dnd-border rounded px-3 py-1.5 text-white text-xs focus:outline-none focus:border-dnd-gold">
+                        <p class="text-[10px] text-gray-500">Obligatorio para que la IA responda desde GitHub Pages. La clave se guarda de forma segura en tu propio navegador.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 pt-2">
+                        <button onclick="createNewLobby()" class="w-full bg-dnd-red hover:bg-red-800 text-white font-medieval font-bold py-3 rounded-lg border border-red-500/30 transition shadow-lg flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-dungeon"></i> Crear Nueva Campaña (Anfitrión)
+                        </button>
+                        
+                        <div class="relative flex py-1 items-center">
+                            <div class="flex-grow border-t border-gray-800"></div>
+                            <span class="flex-shrink mx-4 text-xs text-gray-500 uppercase font-bold">O unirse</span>
+                            <div class="flex-grow border-t border-gray-800"></div>
                         </div>
 
-                        <div class="grid grid-cols-1 gap-3 pt-2">
-                            <button onclick="createNewLobby()" class="w-full bg-dnd-red hover:bg-red-800 text-white font-medieval font-bold py-3 rounded-lg border border-red-500/30 transition shadow-lg flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-dungeon"></i> Crear Nueva Campaña (Anfitrión)
+                        <div class="flex gap-2">
+                            <input type="text" id="input-lobby-code" placeholder="CÓDIGO DE SALA" class="flex-1 bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white uppercase text-center font-mono font-bold tracking-widest focus:outline-none focus:border-dnd-gold text-sm">
+                            <button onclick="joinLobby()" class="bg-dnd-gold/20 hover:bg-dnd-gold/30 text-dnd-gold border border-dnd-gold/50 font-medieval font-bold px-5 py-2 rounded-lg transition text-sm">
+                                Unirse
                             </button>
-                            
-                            <div class="relative flex py-1 items-center">
-                                <div class="flex-grow border-t border-gray-800"></div>
-                                <span class="flex-shrink mx-4 text-xs text-gray-500 uppercase font-bold">O unirse</span>
-                                <div class="flex-grow border-t border-gray-800"></div>
-                            </div>
-
-                            <div class="flex gap-2">
-                                <input type="text" id="input-lobby-code" placeholder="CÓDIGO DE SALA" class="flex-1 bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white uppercase text-center font-mono font-bold tracking-widest focus:outline-none focus:border-dnd-gold text-sm">
-                                <button onclick="joinLobby()" class="bg-dnd-gold/20 hover:bg-dnd-gold/30 text-dnd-gold border border-dnd-gold/50 font-medieval font-bold px-5 py-2 rounded-lg transition text-sm">
-                                    Unirse
-                                </button>
-                            </div>
                         </div>
-                    </div>
-
-                    <div class="text-xs text-gray-500 pt-4 border-t border-gray-800">
-                        Soporta de 2 a 6 jugadores simultáneos con sincronización narrativa.
                     </div>
                 </div>
-            </section>
+
+                <div class="text-xs text-gray-500 pt-4 border-t border-gray-800">
+                    Soporta de 2 a 6 jugadores simultáneos con sincronización narrativa.
+                </div>
+            </div>
+        </section>
 
             <!-- SCREEN 2: CHARACTER CREATOR -->
             <section id="screen-character-creator" class="hidden h-full flex flex-col p-6 parchment-bg overflow-y-auto custom-scrollbar">
@@ -508,105 +518,213 @@
             // Racial bonuses
             if (race === 'Humano') { str+=1; dex+=1; con+=1; int+=1; wis+=1; cha+=1; }
             else if (race === 'Elfo' || race === 'Mediano') { dex+=2; }
-            else if (race === 'Enano') { con+=2; }
-            else if (race === 'Gnomo') { int+=2; }
-            else if (race === 'Semielfo' || race === 'Tiefling') { cha+=2; }
-            else if (race === 'Semiorco' || race === 'Dracónido') { str+=2; }
+        // APPLICATION LOGIC JS
+        <script>
+            // Auto-load saved API Key if present
+            document.addEventListener('DOMContentLoaded', () => {
+                const savedKey = localStorage.getItem('dnd_gemini_api_key');
+                if (savedKey) {
+                    const keyInput = document.getElementById('input-api-key');
+                    if (keyInput) keyInput.value = savedKey;
+                }
+            });
 
-            const getMod = (val) => Math.floor((val - 10) / 2);
-            
-            document.getElementById('mod-str').innerText = (getMod(str) >= 0 ? '+' : '') + getMod(str);
-            document.getElementById('mod-dex').innerText = (getMod(dex) >= 0 ? '+' : '') + getMod(dex);
-            document.getElementById('mod-con').innerText = (getMod(con) >= 0 ? '+' : '') + getMod(con);
-            document.getElementById('mod-int').innerText = (getMod(int) >= 0 ? '+' : '') + getMod(int);
-            document.getElementById('mod-wis').innerText = (getMod(wis) >= 0 ? '+' : '') + getMod(wis);
-            document.getElementById('mod-cha').innerText = (getMod(cha) >= 0 ? '+' : '') + getMod(cha);
-
-            // Hit points calculation
-            let baseHp = 8;
-            if (cls === 'Bárbaro') baseHp = 12;
-            else if (['Guerrero', 'Paladín', 'Explorador'].includes(cls)) baseHp = 10;
-            else if (['Mago', 'Hechicero'].includes(cls)) baseHp = 6;
-            
-            const totalHp = Math.max(1, baseHp + getMod(con));
-            const totalAc = 10 + getMod(dex) + (['Guerrero', 'Paladín', 'Clérigo'].includes(cls) ? 4 : 0);
-
-            document.getElementById('calc-hp').innerText = totalHp;
-            document.getElementById('calc-ac').innerText = totalAc;
-        }
-
-        function rollRandomStats() {
-            const roll4d6DropLowest = () => {
-                let rolls = Array.from({length: 4}, () => Math.floor(Math.random() * 6) + 1);
-                rolls.sort((a,b) => a - b);
-                return rolls[1] + rolls[2] + rolls[3];
+            // GLOBAL APP STATE
+            const state = {
+                lobbyId: null,
+                isHost: false,
+                player: {
+                    id: null,
+                    name: '',
+                    character: null
+                },
+                lobbyData: {
+                    code: '',
+                    players: {},
+                    messages: [],
+                    diceLogs: [],
+                    campaignContext: {
+                        act: 1,
+                        summary: "La aventura comienza a las afueras del pueblo de Phandalin.",
+                        inCombat: false
+                    }
+                },
+                unsubscribeLobby: null
             };
 
             document.getElementById('stat-str').value = roll4d6DropLowest();
-            document.getElementById('stat-dex').value = roll4d6DropLowest();
-            document.getElementById('stat-con').value = roll4d6DropLowest();
-            document.getElementById('stat-int').value = roll4d6DropLowest();
-            document.getElementById('stat-wis').value = roll4d6DropLowest();
-            document.getElementById('stat-cha').value = roll4d6DropLowest();
-            
-            recalculateStats();
-        }
-
-        // LOBBY & FIREBASE MANAGEMENT
-        async function createNewLobby() {
-            const playerName = document.getElementById('input-player-name').value.trim() || 'Anfitrión';
-            state.player.name = playerName;
-            state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
-            state.isHost = true;
-
-            const lobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            state.lobbyId = lobbyCode;
-
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
-            
-            const initialLobby = {
-                code: lobbyCode,
-                hostId: state.player.id,
-                players: {},
-                messages: [{
-                    sender: 'DM (IA)',
-                    text: 'Bienvenidos a la mesa de juego. Una vez estéis listos, podréis comenzar a explorar este fantástico mundo.',
-                    type: 'dm',
-                    timestamp: Date.now()
-                }],
-                diceLogs: [],
-                campaignContext: {
-                    act: 1,
-                    summary: 'El grupo de héroes se encuentra reunido listo para emprender su primera misión.',
-                    inCombat: false
+            // LOBBY & FIREBASE MANAGEMENT
+            async function createNewLobby() {
+                const playerName = document.getElementById('input-player-name').value.trim() || 'Anfitrión';
+                const userApiKey = document.getElementById('input-api-key')?.value.trim();
+                
+                if (userApiKey) {
+                    localStorage.setItem('dnd_gemini_api_key', userApiKey);
                 }
-            };
 
-            await window.setDoc(lobbyRef, initialLobby);
-            subscribeToLobby(lobbyCode);
-            showScreen('screen-character-creator');
-        }
+                state.player.name = playerName;
+                state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+                state.isHost = true;
 
-        async function joinLobby() {
-            const code = document.getElementById('input-lobby-code').value.trim().toUpperCase();
-            const playerName = document.getElementById('input-player-name').value.trim() || 'Jugador';
-            
-            if (!code) {
-                alert('Por favor introduce un código de sala válido.');
-                return;
+                const lobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+                state.lobbyId = lobbyCode;
+
+                const initialLobby = {
+                    code: lobbyCode,
+                    hostId: state.player.id,
+                    players: {},
+                    messages: [{
+                        sender: 'DM (IA)',
+                        text: 'Bienvenidos a la mesa de juego. Una vez estéis listos, podréis comenzar a explorar este fantástico mundo.',
+                        type: 'dm',
+                        timestamp: Date.now()
+                    }],
+                    diceLogs: [],
+                    campaignContext: {
+                        act: 1,
+                        summary: 'El grupo de héroes se encuentra reunido listo para emprender su primera misión.',
+                        inCombat: false
+                    }
+                };
+
+                state.lobbyData = initialLobby;
+
+                try {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+                    await window.setDoc(lobbyRef, initialLobby);
+                    subscribeToLobby(lobbyCode);
+                } catch (err) {
+                    console.warn("Modo local activado:", err);
+                }
+
+                showScreen('screen-character-creator');
+            }
+
+            async function joinLobby() {
+                const code = document.getElementById('input-lobby-code').value.trim().toUpperCase();
+                const playerName = document.getElementById('input-player-name').value.trim() || 'Jugador';
+                const userApiKey = document.getElementById('input-api-key')?.value.trim();
+
+                if (userApiKey) {
+                    localStorage.setItem('dnd_gemini_api_key', userApiKey);
+                }
+
+                if (!code) {
+                    alert('Por favor introduce un código de sala válido.');
+                    return;
+                }
+
+                state.player.name = playerName;
+                state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+                state.isHost = false;
+                state.lobbyId = code;
+
+                try {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
+                    const snap = await window.getDoc(lobbyRef);
+
+                    if (!snap.exists()) {
+                        alert('La sala especificada no existe.');
+                        return;
+                    }
+
+                    subscribeToLobby(code);
+                } catch (err) {
+                    console.warn("Conexión directa a sala local:", err);
+                    state.lobbyData.code = code;
+                }
+
+                showScreen('screen-character-creator');
             }
 
             state.player.name = playerName;
-            state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
-            state.isHost = false;
-            state.lobbyId = code;
+            async function triggerAiDmResponse(currentMessages) {
+                document.getElementById('ai-typing').classList.remove('hidden');
 
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
-            const snap = await window.getDoc(lobbyRef);
+                try {
+                    const systemPrompt = `
+Eres un Dungeon Master (DM) profesional de Dungeons & Dragons 5a Edición. 
+Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
 
-            if (!snap.exists()) {
-                alert('La sala especificada no existe.');
-                return;
+ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
+${JSON.stringify(state.lobbyData.players, null, 2)}
+
+RESUMEN DE CAMPAÑA:
+${state.lobbyData.campaignContext.summary}
+
+REGLAS DE RESPUESTA:
+1. Narra en un estilo evocador de fantasía medieval de D&D.
+2. Si un jugador intenta una acción incierta o difícil, pídeles explícitamente una prueba de habilidad (ej: "Lanza un d20 de Sigilo").
+3. Mantén la coherencia con los acontecimientos anteriores.
+4. No extiendas tus narraciones en exceso (máximo 2 o 3 párrafos concisos por turno para fluidez).
+5. No tomes decisiones por los personajes de los jugadores.
+`;
+
+                    const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
+                    const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
+
+                    // Obtenemos la API Key del input, de localStorage o del sistema
+                    const inputKey = document.getElementById('input-api-key')?.value.trim();
+                    const savedKey = localStorage.getItem('dnd_gemini_api_key');
+                    const apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
+                    
+                    if (!apiKey) {
+                        throw new Error("Falta la Clave API de Gemini. Ingresa tu API Key de Google AI Studio en la pantalla principal para que el DM pueda responder.");
+                    }
+
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                    const payload = {
+                        contents: [{ parts: [{ text: userQuery }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    };
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const result = await response.json();
+                    
+                    let aiText = "";
+                    if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+                        aiText = result.candidates[0].content.parts[0].text;
+                    } else if (result.error) {
+                        aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Verifica tu clave API Key de Google AI Studio.`;
+                    } else {
+                        aiText = "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
+                    }
+
+                    const dmMsg = {
+                        sender: 'DM (IA)',
+                        text: aiText,
+                        type: 'dm',
+                        timestamp: Date.now()
+                    };
+
+                    const finalMessages = [...currentMessages, dmMsg];
+                    state.lobbyData.messages = finalMessages;
+                    renderGameUI();
+
+                    try {
+                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                        await window.updateDoc(lobbyRef, { messages: finalMessages });
+                    } catch(e) {}
+
+                } catch (err) {
+                    console.error("Error al comunicarse con la IA Dungeon Master:", err);
+                    const errorMsg = {
+                        sender: 'DM (IA)',
+                        text: `⚠️ *[Configuración requerida]*: ${err.message}`,
+                        type: 'dm',
+                        timestamp: Date.now()
+                    };
+                    state.lobbyData.messages = [...currentMessages, errorMsg];
+                    renderGameUI();
+                } finally {
+                    document.getElementById('ai-typing').classList.add('hidden');
+                }
             }
 
             subscribeToLobby(code);
@@ -809,7 +927,15 @@
             const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
             const updatedMessages = [...(state.lobbyData.messages || []), playerMsg];
 
-            await window.updateDoc(lobbyRef, { messages: updatedMessages });
+            // Local state update fallback if running standalone offline/GitHub without Firebase backend connected
+            state.lobbyData.messages = updatedMessages;
+            renderGameUI();
+
+            try {
+                await window.updateDoc(lobbyRef, { messages: updatedMessages });
+            } catch (err) {
+                console.warn("Sync note: Guardado localmente en sala en vivo.");
+            }
 
             // Trigger AI DM Response
             triggerAiDmResponse(updatedMessages);
@@ -840,7 +966,10 @@ REGLAS DE RESPUESTA:
                 const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
                 const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
 
-                const apiKey = ""; // API Key handled dynamically by environment
+                // Obtenemos la API Key del input o del sistema
+                const userApiKey = document.getElementById('input-api-key')?.value.trim();
+                const apiKey = userApiKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
+                
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
                 const payload = {
@@ -855,7 +984,15 @@ REGLAS DE RESPUESTA:
                 });
 
                 const result = await response.json();
-                const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
+                
+                let aiText = "";
+                if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+                    aiText = result.candidates[0].content.parts[0].text;
+                } else if (result.error) {
+                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Asegúrate de ingresar una API Key válida de Google AI Studio en el menú principal.`;
+                } else {
+                    aiText = "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
+                }
 
                 const dmMsg = {
                     sender: 'DM (IA)',
@@ -864,13 +1001,25 @@ REGLAS DE RESPUESTA:
                     timestamp: Date.now()
                 };
 
-                const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
                 const finalMessages = [...currentMessages, dmMsg];
+                state.lobbyData.messages = finalMessages;
+                renderGameUI();
 
-                await window.updateDoc(lobbyRef, { messages: finalMessages });
+                try {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    await window.updateDoc(lobbyRef, { messages: finalMessages });
+                } catch(e) {}
 
             } catch (err) {
                 console.error("Error al comunicarse con la IA Dungeon Master:", err);
+                const errorMsg = {
+                    sender: 'DM (IA)',
+                    text: `⚠️ *[Error de Conexión]* Por favor introduce una clave gratuita de Google Gemini (API Key) en la pantalla de inicio para jugar fuera de esta plataforma.`,
+                    type: 'dm',
+                    timestamp: Date.now()
+                };
+                state.lobbyData.messages = [...currentMessages, errorMsg];
+                renderGameUI();
             } finally {
                 document.getElementById('ai-typing').classList.add('hidden');
             }
