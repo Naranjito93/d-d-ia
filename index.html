@@ -908,15 +908,32 @@
             if (typingIndicator) typingIndicator.classList.remove('hidden');
 
             try {
+                // Obtenemos la API Key del input, de localStorage o del prompt si no existe
+                const inputKey = document.getElementById('input-api-key')?.value.trim();
+                let savedKey = localStorage.getItem('dnd_gemini_api_key');
+                let apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
+
+                if (!apiKey) {
+                    apiKey = prompt("Para que el DM de IA pueda narrar, ingresa tu clave gratuita de Google AI Studio (Gemini):");
+                    if (apiKey) {
+                        apiKey = apiKey.trim();
+                        localStorage.setItem('dnd_gemini_api_key', apiKey);
+                        const keyInput = document.getElementById('input-api-key');
+                        if (keyInput) keyInput.value = apiKey;
+                    } else {
+                        throw new Error("Se requiere una Clave API de Gemini para recibir respuesta del DM de IA.");
+                    }
+                }
+
                 const systemPrompt = `
 Eres un Dungeon Master (DM) profesional de Dungeons & Dragons 5a Edición. 
-Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
+Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva en español, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
 
 ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
 ${JSON.stringify(state.lobbyData.players, null, 2)}
 
 RESUMEN DE CAMPAÑA:
-${state.lobbyData.campaignContext ? state.lobbyData.campaignContext.summary : 'La aventura acaba de comenzar.'}
+${state.lobbyData.campaignContext ? state.lobbyData.campaignContext.summary : 'La aventura acaba de comenzar a las afueras de Phandalin.'}
 
 REGLAS DE RESPUESTA:
 1. Narra en un estilo evocador de fantasía medieval de D&D.
@@ -926,17 +943,8 @@ REGLAS DE RESPUESTA:
 5. No tomes decisiones por los personajes de los jugadores.
 `;
 
-                const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
-                const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
-
-                // Obtenemos la API Key del input, de localStorage o del sistema
-                const inputKey = document.getElementById('input-api-key')?.value.trim();
-                const savedKey = localStorage.getItem('dnd_gemini_api_key');
-                const apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
-                
-                if (!apiKey) {
-                    throw new Error("Por favor pega tu Clave API de Google AI Studio en el recuadro del menú principal para que el DM de IA pueda narrar.");
-                }
+                const recentHistory = currentMessages.slice(-8).map(m => `${m.sender}: ${m.text}`).join('\n');
+                const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y respuesta del Dungeon Master para el turno actual:`;
 
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
@@ -957,9 +965,9 @@ REGLAS DE RESPUESTA:
                 if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
                     aiText = result.candidates[0].content.parts[0].text;
                 } else if (result.error) {
-                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Verifica tu clave API Key de Google AI Studio.`;
+                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Comprueba que la clave ingresada sea correcta.`;
                 } else {
-                    aiText = "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
+                    aiText = "El Dungeon Master observa detenidamente al grupo antes de continuar la narración...";
                 }
 
                 const dmMsg = {
@@ -984,7 +992,7 @@ REGLAS DE RESPUESTA:
                 console.error("Error al comunicarse con la IA Dungeon Master:", err);
                 const errorMsg = {
                     sender: 'DM (IA)',
-                    text: `⚠️ *[Nota de configuración]*: ${err.message}`,
+                    text: `⚠️ *[Nota de la Mesa]*: ${err.message}`,
                     type: 'dm',
                     timestamp: Date.now()
                 };
