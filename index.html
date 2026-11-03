@@ -582,7 +582,7 @@
                 }
 
                 state.player.name = playerName;
-                state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+                state.player.id = (window.currentUser && window.currentUser.uid) ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
                 state.isHost = true;
 
                 const lobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -608,25 +608,24 @@
 
                 state.lobbyData = initialLobby;
 
-                // Intenta guardar en la base de datos distribuida
-                try {
-                    if (window.db && window.doc && window.setDoc) {
-                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
-                        await window.setDoc(lobbyRef, initialLobby);
-                        subscribeToLobby(lobbyCode);
-                    }
-                } catch (err) {
-                    console.warn("Modo local activado para la sala:", err);
-                }
-
+                // CAMBIO DE PANTALLA INMEDIATO (Garantiza que la UI avance siempre)
                 document.getElementById('lobby-badge').classList.remove('hidden');
                 document.getElementById('lobby-code-display').innerText = lobbyCode;
                 document.getElementById('player-name-tag').innerText = state.player.name;
 
                 showScreen('screen-character-creator');
+
+                // Intenta guardar en Firebase en segundo plano sin bloquear
+                if (window.db && window.doc && window.setDoc) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+                    window.setDoc(lobbyRef, initialLobby).then(() => {
+                        subscribeToLobby(lobbyCode);
+                    }).catch(err => {
+                        console.warn("Sincronización Firebase en segundo plano omitida:", err.message);
+                    });
+                }
             } catch (globalErr) {
-                console.error("Error al crear sala:", globalErr);
-                alert("Ocurrió un inconveniente al iniciar la sala. Accediendo al creador de personaje...");
+                console.error("Error crítico al crear sala:", globalErr);
                 showScreen('screen-character-creator');
             }
         }
@@ -647,31 +646,27 @@
                 }
 
                 state.player.name = playerName;
-                state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+                state.player.id = (window.currentUser && window.currentUser.uid) ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
                 state.isHost = false;
                 state.lobbyId = code;
+                state.lobbyData.code = code;
 
-                try {
-                    if (window.db && window.doc && window.getDoc) {
-                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
-                        const snap = await window.getDoc(lobbyRef);
-
-                        if (snap.exists()) {
-                            subscribeToLobby(code);
-                        } else {
-                            state.lobbyData.code = code;
-                        }
-                    }
-                } catch (err) {
-                    console.warn("Conexión directa a sala local:", err);
-                    state.lobbyData.code = code;
-                }
-
+                // CAMBIO DE PANTALLA INMEDIATO
                 document.getElementById('lobby-badge').classList.remove('hidden');
                 document.getElementById('lobby-code-display').innerText = code;
                 document.getElementById('player-name-tag').innerText = state.player.name;
 
                 showScreen('screen-character-creator');
+
+                // Intenta verificar la sala en Firebase en segundo plano
+                if (window.db && window.doc && window.getDoc) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
+                    window.getDoc(lobbyRef).then(snap => {
+                        if (snap.exists()) {
+                            subscribeToLobby(code);
+                        }
+                    }).catch(err => console.warn("Modo sala independiente activo"));
+                }
             } catch (err) {
                 console.error("Error al unirse a la sala:", err);
                 showScreen('screen-character-creator');
