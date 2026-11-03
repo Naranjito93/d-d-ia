@@ -459,6 +459,15 @@
 
     <!-- APPLICATION LOGIC JS -->
     <script>
+        // Auto-load saved API Key if present
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('dnd_gemini_api_key');
+            if (savedKey) {
+                const keyInput = document.getElementById('input-api-key');
+                if (keyInput) keyInput.value = savedKey;
+            }
+        });
+
         // GLOBAL APP STATE
         const state = {
             lobbyId: null,
@@ -503,7 +512,23 @@
             }
         }
 
-        // STAT CALCULATOR
+        // STAT CALCULATOR & HELPERS
+        function roll4d6DropLowest() {
+            const rolls = Array.from({length: 4}, () => Math.floor(Math.random() * 6) + 1);
+            rolls.sort((a, b) => a - b);
+            return rolls.slice(1).reduce((a, b) => a + b, 0);
+        }
+
+        function rollRandomStats() {
+            document.getElementById('stat-str').value = roll4d6DropLowest();
+            document.getElementById('stat-dex').value = roll4d6DropLowest();
+            document.getElementById('stat-con').value = roll4d6DropLowest();
+            document.getElementById('stat-int').value = roll4d6DropLowest();
+            document.getElementById('stat-wis').value = roll4d6DropLowest();
+            document.getElementById('stat-cha').value = roll4d6DropLowest();
+            recalculateStats();
+        }
+
         function recalculateStats() {
             const race = document.getElementById('char-race').value;
             const cls = document.getElementById('char-class').value;
@@ -518,43 +543,37 @@
             // Racial bonuses
             if (race === 'Humano') { str+=1; dex+=1; con+=1; int+=1; wis+=1; cha+=1; }
             else if (race === 'Elfo' || race === 'Mediano') { dex+=2; }
-        // APPLICATION LOGIC JS
-        <script>
-            // Auto-load saved API Key if present
-            document.addEventListener('DOMContentLoaded', () => {
-                const savedKey = localStorage.getItem('dnd_gemini_api_key');
-                if (savedKey) {
-                    const keyInput = document.getElementById('input-api-key');
-                    if (keyInput) keyInput.value = savedKey;
-                }
-            });
+            else if (race === 'Enano') { con+=2; }
+            else if (race === 'Gnomo') { int+=2; }
+            else if (race === 'Semielfo' || race === 'Tiefling') { cha+=2; }
+            else if (race === 'Semiorco' || race === 'Dracónido') { str+=2; }
 
-            // GLOBAL APP STATE
-            const state = {
-                lobbyId: null,
-                isHost: false,
-                player: {
-                    id: null,
-                    name: '',
-                    character: null
-                },
-                lobbyData: {
-                    code: '',
-                    players: {},
-                    messages: [],
-                    diceLogs: [],
-                    campaignContext: {
-                        act: 1,
-                        summary: "La aventura comienza a las afueras del pueblo de Phandalin.",
-                        inCombat: false
-                    }
-                },
-                unsubscribeLobby: null
-            };
+            const getMod = val => Math.floor((val - 10) / 2);
+            const formatMod = mod => (mod >= 0 ? `+${mod}` : `${mod}`);
 
-            document.getElementById('stat-str').value = roll4d6DropLowest();
-            // LOBBY & FIREBASE MANAGEMENT
-            async function createNewLobby() {
+            document.getElementById('mod-str').innerText = formatMod(getMod(str));
+            document.getElementById('mod-dex').innerText = formatMod(getMod(dex));
+            document.getElementById('mod-con').innerText = formatMod(getMod(con));
+            document.getElementById('mod-int').innerText = formatMod(getMod(int));
+            document.getElementById('mod-wis').innerText = formatMod(getMod(wis));
+            document.getElementById('mod-cha').innerText = formatMod(getMod(cha));
+
+            // Hit Points calculation
+            let baseHp = 8;
+            if (cls === 'Bárbaro') baseHp = 12;
+            else if (['Guerrero', 'Paladín', 'Explorador'].includes(cls)) baseHp = 10;
+            else if (['Mago', 'Hechicero'].includes(cls)) baseHp = 6;
+            
+            const totalHp = Math.max(1, baseHp + getMod(con));
+            const totalAc = 10 + getMod(dex);
+
+            document.getElementById('calc-hp').innerText = totalHp;
+            document.getElementById('calc-ac').innerText = totalAc;
+        }
+
+        // LOBBY & FIREBASE MANAGEMENT (ROBUST FALLBACK SYSTEM)
+        async function createNewLobby() {
+            try {
                 const playerName = document.getElementById('input-player-name').value.trim() || 'Anfitrión';
                 const userApiKey = document.getElementById('input-api-key')?.value.trim();
                 
@@ -575,7 +594,7 @@
                     players: {},
                     messages: [{
                         sender: 'DM (IA)',
-                        text: 'Bienvenidos a la mesa de juego. Una vez estéis listos, podréis comenzar a explorar este fantástico mundo.',
+                        text: 'Bienvenidos a la mesa de juego. Una vez hayáis configurado a vuestro personaje, podréis adentraros en esta gran aventura.',
                         type: 'dm',
                         timestamp: Date.now()
                     }],
@@ -589,18 +608,31 @@
 
                 state.lobbyData = initialLobby;
 
+                // Intenta guardar en la base de datos distribuida
                 try {
-                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
-                    await window.setDoc(lobbyRef, initialLobby);
-                    subscribeToLobby(lobbyCode);
+                    if (window.db && window.doc && window.setDoc) {
+                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+                        await window.setDoc(lobbyRef, initialLobby);
+                        subscribeToLobby(lobbyCode);
+                    }
                 } catch (err) {
-                    console.warn("Modo local activado:", err);
+                    console.warn("Modo local activado para la sala:", err);
                 }
 
+                document.getElementById('lobby-badge').classList.remove('hidden');
+                document.getElementById('lobby-code-display').innerText = lobbyCode;
+                document.getElementById('player-name-tag').innerText = state.player.name;
+
+                showScreen('screen-character-creator');
+            } catch (globalErr) {
+                console.error("Error al crear sala:", globalErr);
+                alert("Ocurrió un inconveniente al iniciar la sala. Accediendo al creador de personaje...");
                 showScreen('screen-character-creator');
             }
+        }
 
-            async function joinLobby() {
+        async function joinLobby() {
+            try {
                 const code = document.getElementById('input-lobby-code').value.trim().toUpperCase();
                 const playerName = document.getElementById('input-player-name').value.trim() || 'Jugador';
                 const userApiKey = document.getElementById('input-api-key')?.value.trim();
@@ -620,188 +652,119 @@
                 state.lobbyId = code;
 
                 try {
-                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
-                    const snap = await window.getDoc(lobbyRef);
+                    if (window.db && window.doc && window.getDoc) {
+                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
+                        const snap = await window.getDoc(lobbyRef);
 
-                    if (!snap.exists()) {
-                        alert('La sala especificada no existe.');
-                        return;
+                        if (snap.exists()) {
+                            subscribeToLobby(code);
+                        } else {
+                            state.lobbyData.code = code;
+                        }
                     }
-
-                    subscribeToLobby(code);
                 } catch (err) {
                     console.warn("Conexión directa a sala local:", err);
                     state.lobbyData.code = code;
                 }
 
+                document.getElementById('lobby-badge').classList.remove('hidden');
+                document.getElementById('lobby-code-display').innerText = code;
+                document.getElementById('player-name-tag').innerText = state.player.name;
+
+                showScreen('screen-character-creator');
+            } catch (err) {
+                console.error("Error al unirse a la sala:", err);
                 showScreen('screen-character-creator');
             }
-
-            state.player.name = playerName;
-            async function triggerAiDmResponse(currentMessages) {
-                document.getElementById('ai-typing').classList.remove('hidden');
-
-                try {
-                    const systemPrompt = `
-Eres un Dungeon Master (DM) profesional de Dungeons & Dragons 5a Edición. 
-Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
-
-ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
-${JSON.stringify(state.lobbyData.players, null, 2)}
-
-RESUMEN DE CAMPAÑA:
-${state.lobbyData.campaignContext.summary}
-
-REGLAS DE RESPUESTA:
-1. Narra en un estilo evocador de fantasía medieval de D&D.
-2. Si un jugador intenta una acción incierta o difícil, pídeles explícitamente una prueba de habilidad (ej: "Lanza un d20 de Sigilo").
-3. Mantén la coherencia con los acontecimientos anteriores.
-4. No extiendas tus narraciones en exceso (máximo 2 o 3 párrafos concisos por turno para fluidez).
-5. No tomes decisiones por los personajes de los jugadores.
-`;
-
-                    const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
-                    const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
-
-                    // Obtenemos la API Key del input, de localStorage o del sistema
-                    const inputKey = document.getElementById('input-api-key')?.value.trim();
-                    const savedKey = localStorage.getItem('dnd_gemini_api_key');
-                    const apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
-                    
-                    if (!apiKey) {
-                        throw new Error("Falta la Clave API de Gemini. Ingresa tu API Key de Google AI Studio en la pantalla principal para que el DM pueda responder.");
-                    }
-
-                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-                    const payload = {
-                        contents: [{ parts: [{ text: userQuery }] }],
-                        systemInstruction: { parts: [{ text: systemPrompt }] }
-                    };
-
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    const result = await response.json();
-                    
-                    let aiText = "";
-                    if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
-                        aiText = result.candidates[0].content.parts[0].text;
-                    } else if (result.error) {
-                        aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Verifica tu clave API Key de Google AI Studio.`;
-                    } else {
-                        aiText = "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
-                    }
-
-                    const dmMsg = {
-                        sender: 'DM (IA)',
-                        text: aiText,
-                        type: 'dm',
-                        timestamp: Date.now()
-                    };
-
-                    const finalMessages = [...currentMessages, dmMsg];
-                    state.lobbyData.messages = finalMessages;
-                    renderGameUI();
-
-                    try {
-                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                        await window.updateDoc(lobbyRef, { messages: finalMessages });
-                    } catch(e) {}
-
-                } catch (err) {
-                    console.error("Error al comunicarse con la IA Dungeon Master:", err);
-                    const errorMsg = {
-                        sender: 'DM (IA)',
-                        text: `⚠️ *[Configuración requerida]*: ${err.message}`,
-                        type: 'dm',
-                        timestamp: Date.now()
-                    };
-                    state.lobbyData.messages = [...currentMessages, errorMsg];
-                    renderGameUI();
-                } finally {
-                    document.getElementById('ai-typing').classList.add('hidden');
-                }
-            }
-
-            subscribeToLobby(code);
-            showScreen('screen-character-creator');
         }
 
         function subscribeToLobby(lobbyCode) {
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
-            
-            if (state.unsubscribeLobby) state.unsubscribeLobby();
+            try {
+                if (!window.db || !window.doc || !window.onSnapshot) return;
 
-            state.unsubscribeLobby = window.onSnapshot(lobbyRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    state.lobbyData = docSnap.data();
-                    renderGameUI();
-                }
-            }, (err) => {
-                console.error("Error en sincronización multijugador:", err);
-            });
+                const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+                
+                if (state.unsubscribeLobby) state.unsubscribeLobby();
 
-            document.getElementById('lobby-badge').classList.remove('hidden');
-            document.getElementById('lobby-code-display').innerText = lobbyCode;
-            document.getElementById('player-name-tag').innerText = state.player.name;
+                state.unsubscribeLobby = window.onSnapshot(lobbyRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        state.lobbyData = docSnap.data();
+                        renderGameUI();
+                    }
+                }, (err) => {
+                    console.error("Error en sincronización multijugador:", err);
+                });
+            } catch (e) {
+                console.warn("Suscripción en directo no disponible.");
+            }
         }
 
         async function saveCharacterAndEnter() {
-            const charName = document.getElementById('char-name').value.trim() || 'Héroe Sin Nombre';
-            const race = document.getElementById('char-race').value;
-            const cls = document.getElementById('char-class').value;
-            const bg = document.getElementById('char-background').value;
-            const align = document.getElementById('char-alignment').value;
-            const backstory = document.getElementById('char-backstory').value;
+            try {
+                const charName = document.getElementById('char-name').value.trim() || 'Héroe Sin Nombre';
+                const race = document.getElementById('char-race').value;
+                const cls = document.getElementById('char-class').value;
+                const bg = document.getElementById('char-background').value;
+                const align = document.getElementById('char-alignment').value;
+                const backstory = document.getElementById('char-backstory').value;
 
-            const hp = parseInt(document.getElementById('calc-hp').innerText);
-            const ac = parseInt(document.getElementById('calc-ac').innerText);
+                const hp = parseInt(document.getElementById('calc-hp').innerText) || 10;
+                const ac = parseInt(document.getElementById('calc-ac').innerText) || 12;
 
-            const character = {
-                name: charName,
-                race: race,
-                class: cls,
-                level: 1,
-                hp: hp,
-                maxHp: hp,
-                ac: ac,
-                background: bg,
-                alignment: align,
-                backstory: backstory,
-                stats: {
-                    str: parseInt(document.getElementById('stat-str').value),
-                    dex: parseInt(document.getElementById('stat-dex').value),
-                    con: parseInt(document.getElementById('stat-con').value),
-                    int: parseInt(document.getElementById('stat-int').value),
-                    wis: parseInt(document.getElementById('stat-wis').value),
-                    cha: parseInt(document.getElementById('stat-cha').value)
+                const character = {
+                    name: charName,
+                    race: race,
+                    class: cls,
+                    level: 1,
+                    hp: hp,
+                    maxHp: hp,
+                    ac: ac,
+                    background: bg,
+                    alignment: align,
+                    backstory: backstory,
+                    stats: {
+                        str: parseInt(document.getElementById('stat-str').value) || 10,
+                        dex: parseInt(document.getElementById('stat-dex').value) || 10,
+                        con: parseInt(document.getElementById('stat-con').value) || 10,
+                        int: parseInt(document.getElementById('stat-int').value) || 10,
+                        wis: parseInt(document.getElementById('stat-wis').value) || 10,
+                        cha: parseInt(document.getElementById('stat-cha').value) || 10
+                    }
+                };
+
+                state.player.character = character;
+
+                // Actualizar jugadores en el estado
+                if (!state.lobbyData.players) state.lobbyData.players = {};
+                state.lobbyData.players[state.player.id] = {
+                    id: state.player.id,
+                    name: state.player.name,
+                    character: character
+                };
+
+                // Intentar sincronizar a la nube si está habilitado
+                try {
+                    if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                        await window.updateDoc(lobbyRef, { players: state.lobbyData.players });
+                    }
+                } catch(e) {
+                    console.warn("Actualización de jugador guardada localmente.");
                 }
-            };
 
-            state.player.character = character;
-
-            // Sync to lobby
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-            const updatedPlayers = { ...state.lobbyData.players };
-            updatedPlayers[state.player.id] = {
-                id: state.player.id,
-                name: state.player.name,
-                character: character
-            };
-
-            await window.updateDoc(lobbyRef, { players: updatedPlayers });
-
-            showScreen('screen-game');
+                showScreen('screen-game');
+                renderGameUI();
+            } catch (err) {
+                console.error("Error al guardar personaje:", err);
+                showScreen('screen-game');
+            }
         }
 
         // UI RENDERING
         function renderGameUI() {
             // Render Party List
             const partyContainer = document.getElementById('party-list');
+            if (!partyContainer) return;
             partyContainer.innerHTML = '';
             
             const players = Object.values(state.lobbyData.players || {});
@@ -833,6 +796,7 @@ REGLAS DE RESPUESTA:
 
             // Render Narrative Messages
             const stream = document.getElementById('narrative-stream');
+            if (!stream) return;
             stream.innerHTML = '';
 
             (state.lobbyData.messages || []).forEach(msg => {
@@ -862,6 +826,7 @@ REGLAS DE RESPUESTA:
 
             // Render Dice Logs
             const diceLogContainer = document.getElementById('dice-log');
+            if (!diceLogContainer) return;
             diceLogContainer.innerHTML = '';
             
             (state.lobbyData.diceLogs || []).slice(-15).reverse().forEach(log => {
@@ -877,8 +842,6 @@ REGLAS DE RESPUESTA:
 
         // DICE ROLLING MECHANIC
         async function rollDice(sides) {
-            if (!state.lobbyId) return;
-
             const result = Math.floor(Math.random() * sides) + 1;
             const diceText = `d${sides}`;
             
@@ -889,10 +852,6 @@ REGLAS DE RESPUESTA:
                 timestamp: Date.now()
             };
 
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-            const updatedLogs = [...(state.lobbyData.diceLogs || []), newLog];
-            
-            // Send automatic action notification into narrative stream
             const actionMsg = {
                 sender: state.player.character ? state.player.character.name : state.player.name,
                 text: `🎲 ha lanzado un **${diceText}** obteniendo un resultado de **${result}**.`,
@@ -900,12 +859,20 @@ REGLAS DE RESPUESTA:
                 timestamp: Date.now()
             };
 
-            const updatedMessages = [...(state.lobbyData.messages || []), actionMsg];
+            state.lobbyData.diceLogs = [...(state.lobbyData.diceLogs || []), newLog];
+            state.lobbyData.messages = [...(state.lobbyData.messages || []), actionMsg];
+            
+            renderGameUI();
 
-            await window.updateDoc(lobbyRef, { 
-                diceLogs: updatedLogs,
-                messages: updatedMessages
-            });
+            try {
+                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    await window.updateDoc(lobbyRef, { 
+                        diceLogs: state.lobbyData.diceLogs,
+                        messages: state.lobbyData.messages
+                    });
+                }
+            } catch(e) {}
         }
 
         // PLAYER ACTION & AI DUNGEON MASTER CALL
@@ -913,7 +880,7 @@ REGLAS DE RESPUESTA:
             e.preventDefault();
             const input = document.getElementById('player-action-input');
             const actionText = input.value.trim();
-            if (!actionText || !state.lobbyId) return;
+            if (!actionText) return;
 
             input.value = '';
 
@@ -924,25 +891,25 @@ REGLAS DE RESPUESTA:
                 timestamp: Date.now()
             };
 
-            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
             const updatedMessages = [...(state.lobbyData.messages || []), playerMsg];
 
-            // Local state update fallback if running standalone offline/GitHub without Firebase backend connected
             state.lobbyData.messages = updatedMessages;
             renderGameUI();
 
             try {
-                await window.updateDoc(lobbyRef, { messages: updatedMessages });
-            } catch (err) {
-                console.warn("Sync note: Guardado localmente en sala en vivo.");
-            }
+                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    await window.updateDoc(lobbyRef, { messages: updatedMessages });
+                }
+            } catch (err) {}
 
             // Trigger AI DM Response
             triggerAiDmResponse(updatedMessages);
         }
 
         async function triggerAiDmResponse(currentMessages) {
-            document.getElementById('ai-typing').classList.remove('hidden');
+            const typingIndicator = document.getElementById('ai-typing');
+            if (typingIndicator) typingIndicator.classList.remove('hidden');
 
             try {
                 const systemPrompt = `
@@ -953,7 +920,7 @@ ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
 ${JSON.stringify(state.lobbyData.players, null, 2)}
 
 RESUMEN DE CAMPAÑA:
-${state.lobbyData.campaignContext.summary}
+${state.lobbyData.campaignContext ? state.lobbyData.campaignContext.summary : 'La aventura acaba de comenzar.'}
 
 REGLAS DE RESPUESTA:
 1. Narra en un estilo evocador de fantasía medieval de D&D.
@@ -966,10 +933,15 @@ REGLAS DE RESPUESTA:
                 const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
                 const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
 
-                // Obtenemos la API Key del input o del sistema
-                const userApiKey = document.getElementById('input-api-key')?.value.trim();
-                const apiKey = userApiKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
+                // Obtenemos la API Key del input, de localStorage o del sistema
+                const inputKey = document.getElementById('input-api-key')?.value.trim();
+                const savedKey = localStorage.getItem('dnd_gemini_api_key');
+                const apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
                 
+                if (!apiKey) {
+                    throw new Error("Por favor pega tu Clave API de Google AI Studio en el recuadro del menú principal para que el DM de IA pueda narrar.");
+                }
+
                 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
                 const payload = {
@@ -989,7 +961,7 @@ REGLAS DE RESPUESTA:
                 if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
                     aiText = result.candidates[0].content.parts[0].text;
                 } else if (result.error) {
-                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Asegúrate de ingresar una API Key válida de Google AI Studio en el menú principal.`;
+                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Verifica tu clave API Key de Google AI Studio.`;
                 } else {
                     aiText = "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
                 }
@@ -1006,22 +978,24 @@ REGLAS DE RESPUESTA:
                 renderGameUI();
 
                 try {
-                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                    await window.updateDoc(lobbyRef, { messages: finalMessages });
+                    if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                        await window.updateDoc(lobbyRef, { messages: finalMessages });
+                    }
                 } catch(e) {}
 
             } catch (err) {
                 console.error("Error al comunicarse con la IA Dungeon Master:", err);
                 const errorMsg = {
                     sender: 'DM (IA)',
-                    text: `⚠️ *[Error de Conexión]* Por favor introduce una clave gratuita de Google Gemini (API Key) en la pantalla de inicio para jugar fuera de esta plataforma.`,
+                    text: `⚠️ *[Nota de configuración]*: ${err.message}`,
                     type: 'dm',
                     timestamp: Date.now()
                 };
                 state.lobbyData.messages = [...currentMessages, errorMsg];
                 renderGameUI();
             } finally {
-                document.getElementById('ai-typing').classList.add('hidden');
+                if (typingIndicator) typingIndicator.classList.add('hidden');
             }
         }
 
