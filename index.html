@@ -891,4 +891,155 @@
 
         // PLAYER ACTION & AI DUNGEON MASTER CALL
         async function handlePlayerAction(e) {
-<!-- ... existing code -->
+            e.preventDefault();
+            const input = document.getElementById('player-action-input');
+            const actionText = input.value.trim();
+            if (!actionText) return;
+
+            input.value = '';
+
+            const playerMsg = {
+                sender: state.player.character ? state.player.character.name : state.player.name,
+                text: actionText,
+                type: 'player',
+                timestamp: Date.now()
+            };
+
+            state.lobbyData.messages = [...(state.lobbyData.messages || []), playerMsg];
+            renderGameUI();
+
+            try {
+                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    await window.updateDoc(lobbyRef, { messages: state.lobbyData.messages });
+                }
+            } catch(err) {}
+
+            triggerAiDmResponse(state.lobbyData.messages);
+        }
+
+        async function triggerAiDmResponse(messages) {
+            let apiKey = localStorage.getItem('dnd_gemini_api_key') || document.getElementById('input-api-key')?.value.trim();
+            
+            if (!apiKey) {
+                apiKey = prompt("Por favor, introduce tu API Key gratuita de Gemini para que el DM responda:");
+                if (apiKey) {
+                    localStorage.setItem('dnd_gemini_api_key', apiKey.trim());
+                } else {
+                    alert("Se requiere una API Key para que el Dungeon Master de IA pueda narrar la aventura.");
+                    return;
+                }
+            }
+
+            const typingIndicator = document.getElementById('ai-typing');
+            if (typingIndicator) typingIndicator.classList.remove('hidden');
+
+            try {
+                const partySummary = Object.values(state.lobbyData.players || {}).map(p => {
+                    const c = p.character;
+                    return c ? `${c.name} (${c.race} ${c.class}, PV: ${c.hp}/${c.maxHp}, CA: ${c.ac})` : p.name;
+                }).join(', ');
+
+                const systemInstruction = `Eres un experimentado y épico Dungeon Master de Dungeons & Dragons 5ª Edición.
+Tu función es narrar la aventura de fantasía medieval, interpretar a los personajes no jugadores (NPCs), describir los escenarios de forma inmersiva pero fluida, solicitar tiradas de dados (ej. "Haz una prueba de Destreza d20") y resolver las acciones de los jugadores de forma coherente.
+El grupo actual está formado por: ${partySummary}.
+Manten un tono cinematográfico, medieval y entusiasta. Responde en castellano. Sé conciso y claro.`;
+
+                const recentMessages = messages.slice(-10).map(m => `${m.sender}: ${m.text}`).join('\n');
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: systemInstruction },
+                                { text: `Historial reciente de la partida:\n${recentMessages}\n\nComo Dungeon Master, responde a la última acción narrando qué sucede a continuación:` }
+                            ]
+                        }]
+                    })
+                });
+
+                const data = await response.json();
+                let aiText = "El Dungeon Master observa en silencio la situación...";
+
+                if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+                    aiText = data.candidates[0].content.parts[0].text;
+                } else if (data.error) {
+                    aiText = `[Error del DM]: ${data.error.message || 'Error al conectar con la API de Gemini.'}`;
+                }
+
+                const dmMsg = {
+                    sender: 'DM (IA)',
+                    text: aiText,
+                    type: 'dm',
+                    timestamp: Date.now()
+                };
+
+                state.lobbyData.messages = [...(state.lobbyData.messages || []), dmMsg];
+                renderGameUI();
+
+                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    await window.updateDoc(lobbyRef, { messages: state.lobbyData.messages });
+                }
+            } catch (err) {
+                console.error("Error al consultar a Gemini DM:", err);
+            } finally {
+                if (typingIndicator) typingIndicator.classList.add('hidden');
+            }
+        }
+
+        // MODAL TOGGLE & FULL SHEET
+        function toggleSheetModal() {
+            const modal = document.getElementById('modal-sheet');
+            if (!modal) return;
+
+            if (modal.classList.contains('hidden')) {
+                const c = state.player.character;
+                if (!c) {
+                    alert("Aún no has creado un personaje.");
+                    return;
+                }
+
+                document.getElementById('modal-char-title').innerText = `${c.name} - ${c.race} ${c.class}`;
+                document.getElementById('modal-char-content').innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-black/40 p-3 rounded border border-dnd-border">
+                            <span class="text-xs text-gray-400 block uppercase font-bold">Detalles</span>
+                            <div><strong>Trasfondo:</strong> ${c.background}</div>
+                            <div><strong>Alineamiento:</strong> ${c.alignment}</div>
+                            <div><strong>Nivel:</strong> 1 (0 / 300 XP)</div>
+                        </div>
+                        <div class="bg-black/40 p-3 rounded border border-dnd-border">
+                            <span class="text-xs text-gray-400 block uppercase font-bold">Estadísticas Vitales</span>
+                            <div class="text-green-400 font-bold">PV Máximos: ${c.maxHp}</div>
+                            <div class="text-blue-400 font-bold">Clase de Armadura: ${c.ac}</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-black/40 p-3 rounded border border-dnd-border">
+                        <span class="text-xs text-gray-400 block uppercase font-bold mb-2">Atributos y Modificadores</span>
+                        <div class="grid grid-cols-6 gap-2 text-center text-xs font-mono">
+                            <div class="bg-dnd-panel p-2 rounded">FUE<br><strong class="text-white text-sm">${c.stats.str}</strong></div>
+                            <div class="bg-dnd-panel p-2 rounded">DES<br><strong class="text-white text-sm">${c.stats.dex}</strong></div>
+                            <div class="bg-dnd-panel p-2 rounded">CON<br><strong class="text-white text-sm">${c.stats.con}</strong></div>
+                            <div class="bg-dnd-panel p-2 rounded">INT<br><strong class="text-white text-sm">${c.stats.int}</strong></div>
+                            <div class="bg-dnd-panel p-2 rounded">SAB<br><strong class="text-white text-sm">${c.stats.wis}</strong></div>
+                            <div class="bg-dnd-panel p-2 rounded">CAR<br><strong class="text-white text-sm">${c.stats.cha}</strong></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-black/40 p-3 rounded border border-dnd-border">
+                        <span class="text-xs text-gray-400 block uppercase font-bold mb-1">Trasfondo e Historia</span>
+                        <p class="text-xs text-gray-300 leading-relaxed italic">${c.backstory || 'Sin trasfondo definido.'}</p>
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
