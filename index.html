@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D&D 5e - AI Dungeon Master Platform</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        parchment: '#f4e4bc',
+                        'parchment-dark': '#e2cb93',
+                        dnd: {
+                            red: '#7a0000',
+                            gold: '#c99c36',
+                            dark: '#121212',
+                            panel: '#1e1b18',
+                            border: '#3d3429'
+                        }
+                    },
+                    fontFamily: {
+                        medieval: ['Cinzel', 'Georgia', 'serif'],
+                        body: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d0b0a;
+            color: #e0d8c8;
+        }
+        .font-medieval {
+            font-family: 'Cinzel', serif;
+        }
+        .parchment-bg {
+            background-color: #1a1614;
+            background-image: radial-gradient(#2a221d 1px, transparent 1px);
+            background-size: 16px 16px;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #14110f;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #3d3429;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #c99c36;
+        }
+        .dice-glow {
+            box-shadow: 0 0 15px rgba(201, 156, 54, 0.4);
+        }
+        @keyframes pulse-gold {
+            0%, 100% { border-color: rgba(201, 156, 54, 0.4); }
+            50% { border-color: rgba(201, 156, 54, 1); }
+        }
+        .pulse-gold {
+            animation: pulse-gold 2s infinite;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden bg-dnd-dark">
+
+    <!-- Firebase System Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration fallback & dynamic setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dnd-ai-master-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo-api-key",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:12345"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Expose Firebase services globally
+        window.db = db;
+        window.auth = auth;
+        window.appId = appId;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.getDoc = getDoc;
+        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
+        window.collection = collection;
+
+        // Auth Init
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Auth initialization note:", err.message);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                window.currentUser = user;
+                if (window.onUserAuthenticated) window.onUserAuthenticated(user);
+            } else {
+                initAuth();
+            }
+        });
+    </script>
+
+    <!-- Main Container -->
+    <div id="app" class="h-full flex flex-col">
+        <!-- HEADER / NAVIGATION -->
+        <header class="bg-dnd-panel border-b border-dnd-border px-6 py-3 flex justify-between items-center z-20">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid font-medieval text-2xl text-dnd-gold fa-dragon"></i>
+                <h1 class="font-medieval text-xl font-bold tracking-wider text-dnd-gold">REALMS OF AI <span class="text-xs text-gray-400 font-normal">D&D 5e Master</span></h1>
+            </div>
+            
+            <div id="header-status" class="flex items-center space-x-4">
+                <div id="lobby-badge" class="hidden bg-black/40 border border-dnd-gold/30 rounded-full px-4 py-1 text-xs flex items-center space-x-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span>SALA: <strong id="lobby-code-display" class="text-dnd-gold">------</strong></span>
+                    <button onclick="copyLobbyCode()" class="ml-2 hover:text-dnd-gold" title="Copiar Código"><i class="fa-solid fa-copy"></i></button>
+                </div>
+                <div id="user-display" class="text-xs text-gray-400 flex items-center gap-2">
+                    <i class="fa-solid fa-user-shield text-dnd-gold"></i>
+                    <span id="player-name-tag">Jugador Anónimo</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- SCREEN CONTENT CONTAINER -->
+        <main class="flex-1 overflow-hidden relative">
+            
+            <!-- SCREEN 1: MAIN MENU & LOBBY SYSTEM -->
+            <section id="screen-main-menu" class="h-full flex items-center justify-center p-6 parchment-bg">
+                <div class="max-w-md w-full bg-dnd-panel border-2 border-dnd-gold/40 rounded-xl p-8 shadow-2xl text-center space-y-6">
+                    <div class="space-y-2">
+                        <i class="fa-solid fa-dice-d20 text-6xl text-dnd-gold mb-2 hover:rotate-180 transition-transform duration-700 cursor-pointer"></i>
+                        <h2 class="font-medieval text-3xl text-white font-bold">Mesa Virtual D&D 5e</h2>
+                        <p class="text-gray-400 text-sm">Dirigido por una Inteligencia Artificial en Tiempo Real</p>
+                    </div>
+
+                    <div class="space-y-4 pt-4">
+                        <div class="space-y-2">
+                            <label class="block text-left text-xs uppercase text-gray-400 font-bold">Nombre del Jugador</label>
+                            <input type="text" id="input-player-name" placeholder="Ej. Elminster el Sabio" class="w-full bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-dnd-gold text-sm">
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 pt-2">
+                            <button onclick="createNewLobby()" class="w-full bg-dnd-red hover:bg-red-800 text-white font-medieval font-bold py-3 rounded-lg border border-red-500/30 transition shadow-lg flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-dungeon"></i> Crear Nueva Campaña (Anfitrión)
+                            </button>
+                            
+                            <div class="relative flex py-1 items-center">
+                                <div class="flex-grow border-t border-gray-800"></div>
+                                <span class="flex-shrink mx-4 text-xs text-gray-500 uppercase font-bold">O unirse</span>
+                                <div class="flex-grow border-t border-gray-800"></div>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <input type="text" id="input-lobby-code" placeholder="CÓDIGO DE SALA" class="flex-1 bg-black/50 border border-dnd-border rounded-lg px-4 py-2 text-white uppercase text-center font-mono font-bold tracking-widest focus:outline-none focus:border-dnd-gold text-sm">
+                                <button onclick="joinLobby()" class="bg-dnd-gold/20 hover:bg-dnd-gold/30 text-dnd-gold border border-dnd-gold/50 font-medieval font-bold px-5 py-2 rounded-lg transition text-sm">
+                                    Unirse
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-xs text-gray-500 pt-4 border-t border-gray-800">
+                        Soporta de 2 a 6 jugadores simultáneos con sincronización narrativa.
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 2: CHARACTER CREATOR -->
+            <section id="screen-character-creator" class="hidden h-full flex flex-col p-6 parchment-bg overflow-y-auto custom-scrollbar">
+                <div class="max-w-4xl mx-auto w-full bg-dnd-panel border border-dnd-gold/30 rounded-xl p-8 shadow-2xl space-y-6 my-auto">
+                    <div class="border-b border-dnd-border pb-4 flex justify-between items-center">
+                        <div>
+                            <h2 class="font-medieval text-2xl text-dnd-gold font-bold">Creación de Personaje D&D 5e</h2>
+                            <p class="text-gray-400 text-xs">Define tu héroe para la aventura</p>
+                        </div>
+                        <span class="text-xs bg-dnd-gold/10 border border-dnd-gold/30 text-dnd-gold px-3 py-1 rounded-full font-mono">Paso 1 de 1</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Column 1: Info & Origin -->
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Nombre del Héroe</label>
+                                <input type="text" id="char-name" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold" placeholder="Ej. Valeros">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Raza</label>
+                                    <select id="char-race" onchange="recalculateStats()" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold">
+                                        <option value="Humano">Humano (+1 a todo)</option>
+                                        <option value="Elfo">Elfo (+2 Des)</option>
+                                        <option value="Enano">Enano (+2 Con)</option>
+                                        <option value="Mediano">Mediano (+2 Des)</option>
+                                        <option value="Gnomo">Gnomo (+2 Int)</option>
+                                        <option value="Semielfo">Semielfo (+2 Car)</option>
+                                        <option value="Semiorco">Semiorco (+2 Fue)</option>
+                                        <option value="Dracónido">Dracónido (+2 Fue)</option>
+                                        <option value="Tiefling">Tiefling (+2 Car)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Clase</label>
+                                    <select id="char-class" onchange="recalculateStats()" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold">
+                                        <option value="Guerrero">Guerrero (d10 PV)</option>
+                                        <option value="Mago">Mago (d6 PV)</option>
+                                        <option value="Pícaro">Pícaro (d8 PV)</option>
+                                        <option value="Clérigo">Clérigo (d8 PV)</option>
+                                        <option value="Bárbaro">Bárbaro (d12 PV)</option>
+                                        <option value="Bardo">Bardo (d8 PV)</option>
+                                        <option value="Druida">Druida (d8 PV)</option>
+                                        <option value="Explorador">Explorador (d10 PV)</option>
+                                        <option value="Hechicero">Hechicero (d6 PV)</option>
+                                        <option value="Brujo">Brujo (d8 PV)</option>
+                                        <option value="Paladín">Paladín (d10 PV)</option>
+                                        <option value="Monje">Monje (d8 PV)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Trasfondo</label>
+                                    <select id="char-background" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold">
+                                        <option value="Acólito">Acólito</option>
+                                        <option value="Criminal">Criminal</option>
+                                        <option value="Héroe del Pueblo">Héroe del Pueblo</option>
+                                        <option value="Noble">Noble</option>
+                                        <option value="Sabio">Sabio</option>
+                                        <option value="Soldado">Soldado</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Alineamiento</label>
+                                    <select id="char-alignment" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold">
+                                        <option value="Bueno Legal">Bueno Legal</option>
+                                        <option value="Bueno Neutral">Bueno Neutral</option>
+                                        <option value="Bueno Caótico">Bueno Caótico</option>
+                                        <option value="Neutral Puro">Neutral Puro</option>
+                                        <option value="Caótico Neutral">Caótico Neutral</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs text-gray-400 uppercase font-bold mb-1">Historia y Motivación</label>
+                                <textarea id="char-backstory" rows="3" class="w-full bg-black/50 border border-dnd-border rounded-lg p-2.5 text-white text-sm focus:border-dnd-gold" placeholder="Busca vengar a su clan y recuperar un artefacto perdido..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Column 2: Stats & Preview -->
+                        <div class="space-y-4 bg-black/30 p-4 rounded-lg border border-dnd-border">
+                            <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                                <h3 class="font-medieval text-sm text-dnd-gold uppercase font-bold">Atributos Base (Sistema Estándar)</h3>
+                                <button onclick="rollRandomStats()" class="text-xs bg-dnd-gold/20 text-dnd-gold px-2 py-1 rounded hover:bg-dnd-gold/30">Tirar Dados 4d6</button>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-3 text-center">
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Fuerza</span>
+                                    <input type="number" id="stat-str" value="15" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-str" class="text-xs text-dnd-gold font-mono">+2</span>
+                                </div>
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Destreza</span>
+                                    <input type="number" id="stat-dex" value="14" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-dex" class="text-xs text-dnd-gold font-mono">+2</span>
+                                </div>
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Constitución</span>
+                                    <input type="number" id="stat-con" value="13" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-con" class="text-xs text-dnd-gold font-mono">+1</span>
+                                </div>
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Inteligencia</span>
+                                    <input type="number" id="stat-int" value="12" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-int" class="text-xs text-dnd-gold font-mono">+1</span>
+                                </div>
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Sabiduría</span>
+                                    <input type="number" id="stat-wis" value="10" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-wis" class="text-xs text-dnd-gold font-mono">+0</span>
+                                </div>
+                                <div class="bg-dnd-panel p-2 rounded border border-gray-800">
+                                    <span class="text-xs text-gray-400 uppercase font-bold block">Carisma</span>
+                                    <input type="number" id="stat-cha" value="8" onchange="recalculateStats()" class="w-full bg-transparent text-center font-bold text-lg text-white">
+                                    <span id="mod-cha" class="text-xs text-dnd-gold font-mono">-1</span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 pt-2">
+                                <div class="bg-dnd-panel p-3 rounded border border-dnd-gold/30 text-center">
+                                    <span class="text-xs text-gray-400 block uppercase">Puntos de Vida (PV)</span>
+                                    <span id="calc-hp" class="text-2xl font-bold text-green-400 font-mono">11</span>
+                                </div>
+                                <div class="bg-dnd-panel p-3 rounded border border-dnd-gold/30 text-center">
+                                    <span class="text-xs text-gray-400 block uppercase">Clase de Armadura (CA)</span>
+                                    <span id="calc-ac" class="text-2xl font-bold text-blue-400 font-mono">14</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-3 pt-4 border-t border-dnd-border">
+                        <button onclick="saveCharacterAndEnter()" class="bg-dnd-gold hover:bg-yellow-600 text-black font-medieval font-bold px-8 py-3 rounded-lg shadow-lg transition">
+                            Confirmar Personaje y Entrar a la Sala <i class="fa-solid fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SCREEN 3: GAMEPLAY ADVENTURE DESK -->
+            <section id="screen-game" class="hidden h-full flex flex-col md:flex-row overflow-hidden">
+                <!-- LEFT SIDEBAR: PARTY & CHARACTERS -->
+                <aside class="w-full md:w-80 bg-dnd-panel border-r border-dnd-border flex flex-col h-1/3 md:h-full z-10">
+                    <div class="p-4 border-b border-dnd-border flex justify-between items-center bg-black/40">
+                        <h3 class="font-medieval text-dnd-gold font-bold text-sm tracking-wide uppercase"><i class="fa-solid fa-users mr-2"></i> Grupo de Aventureros</h3>
+                        <span id="party-count" class="text-xs bg-dnd-gold/20 text-dnd-gold px-2 py-0.5 rounded-full font-mono">0/6</span>
+                    </div>
+
+                    <!-- Party List -->
+                    <div id="party-list" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                        <!-- Dynamic Player Cards inserted here -->
+                    </div>
+
+                    <!-- Quick Tools Footer -->
+                    <div class="p-4 border-t border-dnd-border bg-black/40 space-y-2">
+                        <button onclick="toggleSheetModal()" class="w-full bg-black/60 hover:bg-black border border-dnd-gold/40 text-dnd-gold text-xs py-2 rounded font-medieval flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-scroll"></i> Mi Ficha Completa
+                        </button>
+                    </div>
+                </aside>
+
+                <!-- CENTER: ADVENTURE NARRATIVE & CHAT -->
+                <div class="flex-1 flex flex-col h-2/3 md:h-full bg-dnd-dark relative">
+                    
+                    <!-- Top Bar: Campaign State -->
+                    <div class="bg-black/80 border-b border-dnd-border px-6 py-2 flex justify-between items-center text-xs">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-gray-400">Campaña:</span>
+                            <span id="campaign-title" class="font-medieval text-dnd-gold font-bold">Las Minas Olvidadas de Phandalin</span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-gray-400">Estado:</span>
+                            <span id="combat-indicator" class="text-green-400 flex items-center gap-1 font-bold"><i class="fa-solid fa-compass"></i> Exploración</span>
+                        </div>
+                    </div>
+
+                    <!-- Narrative Stream -->
+                    <div id="narrative-stream" class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar parchment-bg">
+                        <!-- AI DM and Player Messages appear here -->
+                    </div>
+
+                    <!-- AI Typing Indicator -->
+                    <div id="ai-typing" class="hidden px-6 py-2 text-xs text-dnd-gold flex items-center gap-2 bg-black/60">
+                        <i class="fa-solid fa-dice-d20 animate-spin"></i>
+                        <span>El Dungeon Master está forjando el destino...</span>
+                    </div>
+
+                    <!-- Input Bar -->
+                    <div class="p-4 bg-dnd-panel border-t border-dnd-border">
+                        <form onsubmit="handlePlayerAction(event)" class="flex gap-2">
+                            <input type="text" id="player-action-input" placeholder="Describe tu acción o respuesta libremente..." class="flex-1 bg-black/60 border border-dnd-border rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:border-dnd-gold">
+                            <button type="submit" class="bg-dnd-red hover:bg-red-800 text-white font-medieval font-bold px-6 py-3 rounded-lg border border-red-500/30 transition flex items-center gap-2 text-sm">
+                                <span>Actuar</span> <i class="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- RIGHT SIDEBAR: DICE TOWER & LOGS -->
+                <aside class="w-full md:w-72 bg-dnd-panel border-l border-dnd-border flex flex-col h-auto md:h-full">
+                    <div class="p-4 border-b border-dnd-border bg-black/40">
+                        <h3 class="font-medieval text-dnd-gold font-bold text-sm tracking-wide uppercase flex items-center gap-2">
+                            <i class="fa-solid fa-dice"></i> Torre de Dados D&D 5e
+                        </h3>
+                    </div>
+
+                    <!-- Dice Launcher -->
+                    <div class="p-4 grid grid-cols-4 gap-2 border-b border-dnd-border">
+                        <button onclick="rollDice(4)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d4</button>
+                        <button onclick="rollDice(6)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d6</button>
+                        <button onclick="rollDice(8)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d8</button>
+                        <button onclick="rollDice(10)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d10</button>
+                        <button onclick="rollDice(12)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d12</button>
+                        <button onclick="rollDice(20)" class="col-span-2 bg-dnd-gold/20 hover:bg-dnd-gold/30 border border-dnd-gold/60 text-xs text-dnd-gold py-2 rounded font-mono font-bold pulse-gold">d20 (Prueba)</button>
+                        <button onclick="rollDice(100)" class="bg-black/40 hover:bg-dnd-gold/20 border border-dnd-border hover:border-dnd-gold text-xs text-white py-2 rounded font-mono font-bold">d100</button>
+                    </div>
+
+                    <!-- Dice Roll Log -->
+                    <div class="p-3 bg-black/20 text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-dnd-border">
+                        Historial de Tiradas Sincronizadas
+                    </div>
+                    <div id="dice-log" class="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-xs custom-scrollbar">
+                        <!-- Dynamic dice logs -->
+                    </div>
+                </aside>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL: FULL CHARACTER SHEET -->
+    <div id="modal-sheet" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-dnd-panel border-2 border-dnd-gold/50 rounded-xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex justify-between items-center border-b border-dnd-border pb-3">
+                <h3 id="modal-char-title" class="font-medieval text-xl text-dnd-gold font-bold">Ficha de Personaje</h3>
+                <button onclick="toggleSheetModal()" class="text-gray-400 hover:text-white text-xl">&times;</button>
+            </div>
+            
+            <div id="modal-char-content" class="space-y-4 text-sm">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- APPLICATION LOGIC JS -->
+    <script>
+        // GLOBAL APP STATE
+        const state = {
+            lobbyId: null,
+            isHost: false,
+            player: {
+                id: null,
+                name: '',
+                character: null
+            },
+            lobbyData: {
+                code: '',
+                players: {},
+                messages: [],
+                diceLogs: [],
+                campaignContext: {
+                    act: 1,
+                    summary: "La aventura comienza a las afueras del pueblo de Phandalin.",
+                    inCombat: false
+                }
+            },
+            unsubscribeLobby: null
+        };
+
+        // UI HELPERS
+        function showScreen(screenId) {
+            document.getElementById('screen-main-menu').classList.add('hidden');
+            document.getElementById('screen-character-creator').classList.add('hidden');
+            document.getElementById('screen-game').classList.add('hidden');
+            
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function copyLobbyCode() {
+            if (state.lobbyData.code) {
+                const dummy = document.createElement('input');
+                document.body.appendChild(dummy);
+                dummy.value = state.lobbyData.code;
+                dummy.select();
+                document.execCommand('copy');
+                document.body.removeChild(dummy);
+                alert(`¡Código de Sala ${state.lobbyData.code} copiado al portapapeles!`);
+            }
+        }
+
+        // STAT CALCULATOR
+        function recalculateStats() {
+            const race = document.getElementById('char-race').value;
+            const cls = document.getElementById('char-class').value;
+
+            let str = parseInt(document.getElementById('stat-str').value) || 10;
+            let dex = parseInt(document.getElementById('stat-dex').value) || 10;
+            let con = parseInt(document.getElementById('stat-con').value) || 10;
+            let int = parseInt(document.getElementById('stat-int').value) || 10;
+            let wis = parseInt(document.getElementById('stat-wis').value) || 10;
+            let cha = parseInt(document.getElementById('stat-cha').value) || 10;
+
+            // Racial bonuses
+            if (race === 'Humano') { str+=1; dex+=1; con+=1; int+=1; wis+=1; cha+=1; }
+            else if (race === 'Elfo' || race === 'Mediano') { dex+=2; }
+            else if (race === 'Enano') { con+=2; }
+            else if (race === 'Gnomo') { int+=2; }
+            else if (race === 'Semielfo' || race === 'Tiefling') { cha+=2; }
+            else if (race === 'Semiorco' || race === 'Dracónido') { str+=2; }
+
+            const getMod = (val) => Math.floor((val - 10) / 2);
+            
+            document.getElementById('mod-str').innerText = (getMod(str) >= 0 ? '+' : '') + getMod(str);
+            document.getElementById('mod-dex').innerText = (getMod(dex) >= 0 ? '+' : '') + getMod(dex);
+            document.getElementById('mod-con').innerText = (getMod(con) >= 0 ? '+' : '') + getMod(con);
+            document.getElementById('mod-int').innerText = (getMod(int) >= 0 ? '+' : '') + getMod(int);
+            document.getElementById('mod-wis').innerText = (getMod(wis) >= 0 ? '+' : '') + getMod(wis);
+            document.getElementById('mod-cha').innerText = (getMod(cha) >= 0 ? '+' : '') + getMod(cha);
+
+            // Hit points calculation
+            let baseHp = 8;
+            if (cls === 'Bárbaro') baseHp = 12;
+            else if (['Guerrero', 'Paladín', 'Explorador'].includes(cls)) baseHp = 10;
+            else if (['Mago', 'Hechicero'].includes(cls)) baseHp = 6;
+            
+            const totalHp = Math.max(1, baseHp + getMod(con));
+            const totalAc = 10 + getMod(dex) + (['Guerrero', 'Paladín', 'Clérigo'].includes(cls) ? 4 : 0);
+
+            document.getElementById('calc-hp').innerText = totalHp;
+            document.getElementById('calc-ac').innerText = totalAc;
+        }
+
+        function rollRandomStats() {
+            const roll4d6DropLowest = () => {
+                let rolls = Array.from({length: 4}, () => Math.floor(Math.random() * 6) + 1);
+                rolls.sort((a,b) => a - b);
+                return rolls[1] + rolls[2] + rolls[3];
+            };
+
+            document.getElementById('stat-str').value = roll4d6DropLowest();
+            document.getElementById('stat-dex').value = roll4d6DropLowest();
+            document.getElementById('stat-con').value = roll4d6DropLowest();
+            document.getElementById('stat-int').value = roll4d6DropLowest();
+            document.getElementById('stat-wis').value = roll4d6DropLowest();
+            document.getElementById('stat-cha').value = roll4d6DropLowest();
+            
+            recalculateStats();
+        }
+
+        // LOBBY & FIREBASE MANAGEMENT
+        async function createNewLobby() {
+            const playerName = document.getElementById('input-player-name').value.trim() || 'Anfitrión';
+            state.player.name = playerName;
+            state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+            state.isHost = true;
+
+            const lobbyCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            state.lobbyId = lobbyCode;
+
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+            
+            const initialLobby = {
+                code: lobbyCode,
+                hostId: state.player.id,
+                players: {},
+                messages: [{
+                    sender: 'DM (IA)',
+                    text: 'Bienvenidos a la mesa de juego. Una vez estéis listos, podréis comenzar a explorar este fantástico mundo.',
+                    type: 'dm',
+                    timestamp: Date.now()
+                }],
+                diceLogs: [],
+                campaignContext: {
+                    act: 1,
+                    summary: 'El grupo de héroes se encuentra reunido listo para emprender su primera misión.',
+                    inCombat: false
+                }
+            };
+
+            await window.setDoc(lobbyRef, initialLobby);
+            subscribeToLobby(lobbyCode);
+            showScreen('screen-character-creator');
+        }
+
+        async function joinLobby() {
+            const code = document.getElementById('input-lobby-code').value.trim().toUpperCase();
+            const playerName = document.getElementById('input-player-name').value.trim() || 'Jugador';
+            
+            if (!code) {
+                alert('Por favor introduce un código de sala válido.');
+                return;
+            }
+
+            state.player.name = playerName;
+            state.player.id = window.currentUser ? window.currentUser.uid : 'p_' + Math.random().toString(36).substr(2, 9);
+            state.isHost = false;
+            state.lobbyId = code;
+
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
+            const snap = await window.getDoc(lobbyRef);
+
+            if (!snap.exists()) {
+                alert('La sala especificada no existe.');
+                return;
+            }
+
+            subscribeToLobby(code);
+            showScreen('screen-character-creator');
+        }
+
+        function subscribeToLobby(lobbyCode) {
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
+            
+            if (state.unsubscribeLobby) state.unsubscribeLobby();
+
+            state.unsubscribeLobby = window.onSnapshot(lobbyRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    state.lobbyData = docSnap.data();
+                    renderGameUI();
+                }
+            }, (err) => {
+                console.error("Error en sincronización multijugador:", err);
+            });
+
+            document.getElementById('lobby-badge').classList.remove('hidden');
+            document.getElementById('lobby-code-display').innerText = lobbyCode;
+            document.getElementById('player-name-tag').innerText = state.player.name;
+        }
+
+        async function saveCharacterAndEnter() {
+            const charName = document.getElementById('char-name').value.trim() || 'Héroe Sin Nombre';
+            const race = document.getElementById('char-race').value;
+            const cls = document.getElementById('char-class').value;
+            const bg = document.getElementById('char-background').value;
+            const align = document.getElementById('char-alignment').value;
+            const backstory = document.getElementById('char-backstory').value;
+
+            const hp = parseInt(document.getElementById('calc-hp').innerText);
+            const ac = parseInt(document.getElementById('calc-ac').innerText);
+
+            const character = {
+                name: charName,
+                race: race,
+                class: cls,
+                level: 1,
+                hp: hp,
+                maxHp: hp,
+                ac: ac,
+                background: bg,
+                alignment: align,
+                backstory: backstory,
+                stats: {
+                    str: parseInt(document.getElementById('stat-str').value),
+                    dex: parseInt(document.getElementById('stat-dex').value),
+                    con: parseInt(document.getElementById('stat-con').value),
+                    int: parseInt(document.getElementById('stat-int').value),
+                    wis: parseInt(document.getElementById('stat-wis').value),
+                    cha: parseInt(document.getElementById('stat-cha').value)
+                }
+            };
+
+            state.player.character = character;
+
+            // Sync to lobby
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+            const updatedPlayers = { ...state.lobbyData.players };
+            updatedPlayers[state.player.id] = {
+                id: state.player.id,
+                name: state.player.name,
+                character: character
+            };
+
+            await window.updateDoc(lobbyRef, { players: updatedPlayers });
+
+            showScreen('screen-game');
+        }
+
+        // UI RENDERING
+        function renderGameUI() {
+            // Render Party List
+            const partyContainer = document.getElementById('party-list');
+            partyContainer.innerHTML = '';
+            
+            const players = Object.values(state.lobbyData.players || {});
+            document.getElementById('party-count').innerText = `${players.length}/6`;
+
+            players.forEach(p => {
+                const c = p.character;
+                if (!c) return;
+                
+                const card = document.createElement('div');
+                card.className = "bg-black/40 border border-dnd-border hover:border-dnd-gold/40 p-3 rounded-lg flex items-center justify-between";
+                card.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-dnd-gold/10 border border-dnd-gold/40 flex items-center justify-center font-medieval text-dnd-gold font-bold">
+                            ${c.name.charAt(0)}
+                        </div>
+                        <div>
+                            <div class="font-bold text-sm text-white">${c.name}</div>
+                            <div class="text-xs text-gray-400">${c.race} ${c.class} (Niv 1)</div>
+                        </div>
+                    </div>
+                    <div class="text-right font-mono text-xs">
+                        <div class="text-green-400 font-bold">${c.hp}/${c.maxHp} PV</div>
+                        <div class="text-gray-400">CA: ${c.ac}</div>
+                    </div>
+                `;
+                partyContainer.appendChild(card);
+            });
+
+            // Render Narrative Messages
+            const stream = document.getElementById('narrative-stream');
+            stream.innerHTML = '';
+
+            (state.lobbyData.messages || []).forEach(msg => {
+                const msgDiv = document.createElement('div');
+                if (msg.type === 'dm') {
+                    msgDiv.className = "bg-black/50 border-l-4 border-dnd-gold p-4 rounded-r-lg shadow space-y-2";
+                    msgDiv.innerHTML = `
+                        <div class="flex items-center space-x-2 text-xs font-medieval text-dnd-gold font-bold">
+                            <i class="fa-solid fa-dragon"></i> <span>Dungeon Master (IA)</span>
+                        </div>
+                        <div class="text-sm text-gray-200 leading-relaxed font-serif">${msg.text}</div>
+                    `;
+                } else {
+                    msgDiv.className = "bg-dnd-panel/60 border border-dnd-border p-3 rounded-lg ml-6 space-y-1";
+                    msgDiv.innerHTML = `
+                        <div class="flex justify-between items-center text-xs">
+                            <span class="font-bold text-dnd-gold">${msg.sender}</span>
+                            <span class="text-gray-500 font-mono">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        </div>
+                        <div class="text-sm text-gray-300">${msg.text}</div>
+                    `;
+                }
+                stream.appendChild(msgDiv);
+            });
+
+            stream.scrollTop = stream.scrollHeight;
+
+            // Render Dice Logs
+            const diceLogContainer = document.getElementById('dice-log');
+            diceLogContainer.innerHTML = '';
+            
+            (state.lobbyData.diceLogs || []).slice(-15).reverse().forEach(log => {
+                const logItem = document.createElement('div');
+                logItem.className = "bg-black/40 border border-gray-800 p-2 rounded flex justify-between items-center";
+                logItem.innerHTML = `
+                    <span class="text-gray-400">${log.player}:</span>
+                    <span class="font-bold text-dnd-gold">${log.dice} = <span class="text-white text-sm">${log.result}</span></span>
+                `;
+                diceLogContainer.appendChild(logItem);
+            });
+        }
+
+        // DICE ROLLING MECHANIC
+        async function rollDice(sides) {
+            if (!state.lobbyId) return;
+
+            const result = Math.floor(Math.random() * sides) + 1;
+            const diceText = `d${sides}`;
+            
+            const newLog = {
+                player: state.player.character ? state.player.character.name : state.player.name,
+                dice: diceText,
+                result: result,
+                timestamp: Date.now()
+            };
+
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+            const updatedLogs = [...(state.lobbyData.diceLogs || []), newLog];
+            
+            // Send automatic action notification into narrative stream
+            const actionMsg = {
+                sender: state.player.character ? state.player.character.name : state.player.name,
+                text: `🎲 ha lanzado un **${diceText}** obteniendo un resultado de **${result}**.`,
+                type: 'player',
+                timestamp: Date.now()
+            };
+
+            const updatedMessages = [...(state.lobbyData.messages || []), actionMsg];
+
+            await window.updateDoc(lobbyRef, { 
+                diceLogs: updatedLogs,
+                messages: updatedMessages
+            });
+        }
+
+        // PLAYER ACTION & AI DUNGEON MASTER CALL
+        async function handlePlayerAction(e) {
+            e.preventDefault();
+            const input = document.getElementById('player-action-input');
+            const actionText = input.value.trim();
+            if (!actionText || !state.lobbyId) return;
+
+            input.value = '';
+
+            const playerMsg = {
+                sender: state.player.character ? state.player.character.name : state.player.name,
+                text: actionText,
+                type: 'player',
+                timestamp: Date.now()
+            };
+
+            const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+            const updatedMessages = [...(state.lobbyData.messages || []), playerMsg];
+
+            await window.updateDoc(lobbyRef, { messages: updatedMessages });
+
+            // Trigger AI DM Response
+            triggerAiDmResponse(updatedMessages);
+        }
+
+        async function triggerAiDmResponse(currentMessages) {
+            document.getElementById('ai-typing').classList.remove('hidden');
+
+            try {
+                const systemPrompt = `
+Eres un Dungeon Master (DM) profesional de Dungeons & Dragons 5a Edición. 
+Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
+
+ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
+${JSON.stringify(state.lobbyData.players, null, 2)}
+
+RESUMEN DE CAMPAÑA:
+${state.lobbyData.campaignContext.summary}
+
+REGLAS DE RESPUESTA:
+1. Narra en un estilo evocador de fantasía medieval de D&D.
+2. Si un jugador intenta una acción incierta o difícil, pídeles explícitamente una prueba de habilidad (ej: "Lanza un d20 de Sigilo").
+3. Mantén la coherencia con los acontecimientos anteriores.
+4. No extiendas tus narraciones en exceso (máximo 2 o 3 párrafos concisos por turno para fluidez).
+5. No tomes decisiones por los personajes de los jugadores.
+`;
+
+                const recentHistory = currentMessages.slice(-6).map(m => `${m.sender}: ${m.text}`).join('\n');
+                const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y consecuencias del Dungeon Master para la última acción:`;
+
+                const apiKey = ""; // API Key handled dynamically by environment
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text || "El DM reflexiona en silencio sobre las consecuencias de vuestras acciones...";
+
+                const dmMsg = {
+                    sender: 'DM (IA)',
+                    text: aiText,
+                    type: 'dm',
+                    timestamp: Date.now()
+                };
+
+                const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                const finalMessages = [...currentMessages, dmMsg];
+
+                await window.updateDoc(lobbyRef, { messages: finalMessages });
+
+            } catch (err) {
+                console.error("Error al comunicarse con la IA Dungeon Master:", err);
+            } finally {
+                document.getElementById('ai-typing').classList.add('hidden');
+            }
+        }
+
+        // MODAL MANAGEMENT
+        function toggleSheetModal() {
+            const modal = document.getElementById('modal-sheet');
+            const content = document.getElementById('modal-char-content');
+            const c = state.player.character;
+
+            if (!c) {
+                alert('No has creado tu personaje todavía.');
+                return;
+            }
+
+            if (modal.classList.contains('hidden')) {
+                content.innerHTML = `
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p><strong>Raza:</strong> ${c.race}</p>
+                            <p><strong>Clase:</strong> ${c.class} (Nivel ${c.level})</p>
+                            <p><strong>Trasfondo:</strong> ${c.background}</p>
+                            <p><strong>Alineamiento:</strong> ${c.alignment}</p>
+                        </div>
+                        <div>
+                            <p><strong>Puntos de Vida:</strong> ${c.hp} / ${c.maxHp}</p>
+                            <p><strong>Clase de Armadura:</strong> ${c.ac}</p>
+                        </div>
+                    </div>
+                    <div class="border-t border-gray-800 pt-3">
+                        <h4 class="font-bold text-dnd-gold mb-2">Atributos</h4>
+                        <div class="grid grid-cols-6 gap-2 text-center">
+                            <div class="bg-black/40 p-2 rounded">FUE<br><strong>${c.stats.str}</strong></div>
+                            <div class="bg-black/40 p-2 rounded">DES<br><strong>${c.stats.dex}</strong></div>
+                            <div class="bg-black/40 p-2 rounded">CON<br><strong>${c.stats.con}</strong></div>
+                            <div class="bg-black/40 p-2 rounded">INT<br><strong>${c.stats.int}</strong></div>
+                            <div class="bg-black/40 p-2 rounded">SAB<br><strong>${c.stats.wis}</strong></div>
+                            <div class="bg-black/40 p-2 rounded">CAR<br><strong>${c.stats.cha}</strong></div>
+                        </div>
+                    </div>
+                    <div class="border-t border-gray-800 pt-3">
+                        <h4 class="font-bold text-dnd-gold mb-1">Historia Personal</h4>
+                        <p class="text-xs text-gray-300 italic">${c.backstory || 'Sin historia previa declarada.'}</p>
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
