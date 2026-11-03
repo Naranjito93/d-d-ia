@@ -934,6 +934,10 @@
             const typingIndicator = document.getElementById('ai-typing');
             if (typingIndicator) typingIndicator.classList.remove('hidden');
 
+            // Timeout de seguridad de 10 segundos para quitar el indicador de "pensando"
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
             try {
                 const partySummary = Object.values(state.lobbyData.players || {}).map(p => {
                     const c = p.character;
@@ -941,33 +945,56 @@
                 }).join(', ');
 
                 const systemInstruction = `Eres un experimentado y épico Dungeon Master de Dungeons & Dragons 5ª Edición.
-Tu función es narrar la aventura de fantasía medieval, interpretar a los personajes no jugadores (NPCs), describir los escenarios de forma inmersiva pero fluida, solicitar tiradas de dados (ej. "Haz una prueba de Destreza d20") y resolver las acciones de los jugadores de forma coherente.
+Tu función es narrar la aventura de fantasía medieval, interpretar a los personajes no jugadores (NPCs), describir los escenarios de forma inmersiva pero fluida, solicitar tiradas de dados y resolver las acciones de los jugadores de forma coherente.
 El grupo actual está formado por: ${partySummary}.
-Manten un tono cinematográfico, medieval y entusiasta. Responde en castellano. Sé conciso y claro.`;
+Mantén un tono cinematográfico, medieval y entusiasta. Responde en castellano. Sé conciso y claro (máximo 3 párrafos cortos).`;
 
-                const recentMessages = messages.slice(-10).map(m => `${m.sender}: ${m.text}`).join('\n');
+                const recentMessages = messages.slice(-8).map(m => `${m.sender}: ${m.text}`).join('\n');
+                const promptText = `Historial reciente de la partida:\n${recentMessages}\n\nComo Dungeon Master, responde al último evento o tirada narrando las consecuencias de forma coherente con las reglas de D&D 5e:`;
 
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: systemInstruction },
-                                { text: `Historial reciente de la partida:\n${recentMessages}\n\nComo Dungeon Master, responde a la última acción narrando qué sucede a continuación:` }
-                            ]
-                        }]
-                    })
-                });
+                // Lista de modelos a probar secuencialmente
+                const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+                let aiText = null;
+                let lastError = null;
 
-                const data = await response.json();
-                let aiText = "El Dungeon Master observa en silencio la situación...";
+                for (const model of models) {
+                    try {
+                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            signal: controller.signal,
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [
+                                        { text: systemInstruction },
+                                        { text: promptText }
+                                    ]
+                                }]
+                            })
+                        });
 
-                if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
-                    aiText = data.candidates[0].content.parts[0].text;
-                } else if (data.error) {
-                    aiText = `[Error del DM]: ${data.error.message || 'Error al conectar con la API de Gemini.'}`;
+                        const data = await response.json();
+                        
+                        if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+                            aiText = data.candidates[0].content.parts[0].text;
+                            break; // Petición exitosa
+                        } else if (data.error) {
+                            lastError = data.error.message;
+                        }
+                    } catch (err) {
+                        lastError = err.message;
+                    }
                 }
+
+                clearTimeout(timeoutId);
+
+                // Si fallaron todas las peticiones a la API
+                if (!aiText) {
+                    aiText = `*El aire se vuelve pesado por un instante...* [Nota del DM: No se pudo conectar con la API de IA (${lastError || 'Tiempo de espera agotado'}). Comprueba que tu API Key sea correcta].`;
+                }
+
+                // Formatear negritas básicas para el chat
+                aiText = aiText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
 
                 const dmMsg = {
                     sender: 'DM (IA)',
@@ -984,8 +1011,18 @@ Manten un tono cinematográfico, medieval y entusiasta. Responde en castellano. 
                     await window.updateDoc(lobbyRef, { messages: state.lobbyData.messages });
                 }
             } catch (err) {
-                console.error("Error al consultar a Gemini DM:", err);
+                console.error("Error crítico al procesar IA:", err);
+                // Asegurar que se muestra un mensaje de contingencia en lugar de congelar la pantalla
+                const dmMsg = {
+                    sender: 'DM (IA)',
+                    text: `*El Dungeon Master hace una pausa reflexionando sobre tu acción...* (Ocurrió un problema de conexión con la IA. Vuelve a intentar tu acción o revisa tu clave).`,
+                    type: 'dm',
+                    timestamp: Date.now()
+                };
+                state.lobbyData.messages = [...(state.lobbyData.messages || []), dmMsg];
+                renderGameUI();
             } finally {
+                clearTimeout(timeoutId);
                 if (typingIndicator) typingIndicator.classList.add('hidden');
             }
         }
