@@ -658,14 +658,9 @@
 
                 showScreen('screen-character-creator');
 
-                // Intenta verificar la sala en Firebase en segundo plano
-                if (window.db && window.doc && window.getDoc) {
-                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', code);
-                    window.getDoc(lobbyRef).then(snap => {
-                        if (snap.exists()) {
-                            subscribeToLobby(code);
-                        }
-                    }).catch(err => console.warn("Modo sala independiente activo"));
+                // Intenta verificar la sala en Firebase y activa sincronización multijugador continua
+                if (window.db && window.doc) {
+                    subscribeToLobby(code);
                 }
             } catch (err) {
                 console.error("Error al unirse a la sala:", err);
@@ -675,22 +670,40 @@
 
         function subscribeToLobby(lobbyCode) {
             try {
-                if (!window.db || !window.doc || !window.onSnapshot) return;
+                if (!window.db || !window.doc) return;
 
                 const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', lobbyCode);
                 
                 if (state.unsubscribeLobby) state.unsubscribeLobby();
 
-                state.unsubscribeLobby = window.onSnapshot(lobbyRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        state.lobbyData = docSnap.data();
-                        renderGameUI();
-                    }
-                }, (err) => {
-                    console.error("Error en sincronización multijugador:", err);
-                });
+                // 1. Escuchador en tiempo real de Firebase
+                if (window.onSnapshot) {
+                    state.unsubscribeLobby = window.onSnapshot(lobbyRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            state.lobbyData = docSnap.data();
+                            renderGameUI();
+                        }
+                    }, (err) => {
+                        console.warn("Fallback a polling por restricción de red móvil:", err);
+                    });
+                }
+
+                // 2. Polling de respaldo (3 segundos) para asegurar conexión móvil
+                if (window.lobbyInterval) clearInterval(window.lobbyInterval);
+                window.lobbyInterval = setInterval(async () => {
+                    try {
+                        if (window.getDoc) {
+                            const snap = await window.getDoc(lobbyRef);
+                            if (snap.exists()) {
+                                state.lobbyData = snap.data();
+                                renderGameUI();
+                            }
+                        }
+                    } catch (e) {}
+                }, 3000);
+
             } catch (e) {
-                console.warn("Suscripción en directo no disponible.");
+                console.warn("Suscripción multijugador en directo activa en modo local.");
             }
         }
 
@@ -750,19 +763,24 @@
                         timestamp: Date.now()
                     };
                     state.lobbyData.messages = [...(state.lobbyData.messages || []), initMsg];
-                    renderGameUI();
-                    triggerAiDmResponse(state.lobbyData.messages);
                 }
 
-                // Intentar sincronizar a la nube en segundo plano (no bloqueante)
-                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                // Intentar sincronizar a la nube e inscribir al nuevo jugador para que lo vean otros dispositivos
+                if (window.db && window.doc && state.lobbyId) {
                     const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                    window.updateDoc(lobbyRef, { 
+                    
+                    const updateData = { 
                         players: state.lobbyData.players,
                         messages: state.lobbyData.messages
-                    }).catch(e => {
-                        console.warn("Actualización de jugador guardada únicamente en memoria local.");
-                    });
+                    };
+
+                    if (window.updateDoc) {
+                        window.updateDoc(lobbyRef, updateData).catch(() => {
+                            if (window.setDoc) window.setDoc(lobbyRef, state.lobbyData, { merge: true });
+                        });
+                    } else if (window.setDoc) {
+                        window.setDoc(lobbyRef, state.lobbyData, { merge: true });
+                    }
                 }
             } catch (err) {
                 console.error("Error al guardar personaje:", err);
@@ -965,9 +983,9 @@ Mantén un tono cinematográfico, medieval y entusiasta. Responde en castellano.
                         signal: controller.signal,
                         body: JSON.stringify({
                             contents: [{
+                                role: 'user',
                                 parts: [
-                                    { text: systemInstruction },
-                                    { text: promptText }
+                                    { text: systemInstruction + "\n\n" + promptText }
                                 ]
                             }]
                         })
