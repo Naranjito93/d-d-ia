@@ -741,16 +741,31 @@
                 showScreen('screen-game');
                 renderGameUI();
 
+                // INICIO AUTOMÁTICO DE NARRATIVA SI ES EL PRIMER JUGADOR O LA SALA ESTÁ VACÍA
+                if (!state.lobbyData.messages || state.lobbyData.messages.length <= 1) {
+                    const initMsg = {
+                        sender: state.player.character.name,
+                        text: "¡El grupo se ha reunido! Comenzamos la aventura.",
+                        type: 'player',
+                        timestamp: Date.now()
+                    };
+                    state.lobbyData.messages = [...(state.lobbyData.messages || []), initMsg];
+                    renderGameUI();
+                    triggerAiDmResponse(state.lobbyData.messages);
+                }
+
                 // Intentar sincronizar a la nube en segundo plano (no bloqueante)
                 if (window.db && window.doc && window.updateDoc && state.lobbyId) {
                     const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                    window.updateDoc(lobbyRef, { players: state.lobbyData.players }).catch(e => {
+                    window.updateDoc(lobbyRef, { 
+                        players: state.lobbyData.players,
+                        messages: state.lobbyData.messages
+                    }).catch(e => {
                         console.warn("Actualización de jugador guardada únicamente en memoria local.");
                     });
                 }
             } catch (err) {
                 console.error("Error al guardar personaje:", err);
-                // Garantizar entrada al juego incluso con errores
                 showScreen('screen-game');
                 renderGameUI();
             }
@@ -850,7 +865,7 @@
 
             const actionMsg = {
                 sender: state.player.character ? state.player.character.name : state.player.name,
-                text: `🎲 ha lanzado un **${diceText}** obteniendo un resultado de **${result}**.`,
+                text: `🎲 Lanza un **${diceText}** y obtiene un resultado de **${result}**.`,
                 type: 'player',
                 timestamp: Date.now()
             };
@@ -869,186 +884,11 @@
                     });
                 }
             } catch(e) {}
+
+            // Invocar respuesta de la IA ante la tirada de dados
+            triggerAiDmResponse(state.lobbyData.messages);
         }
 
         // PLAYER ACTION & AI DUNGEON MASTER CALL
         async function handlePlayerAction(e) {
-            e.preventDefault();
-            const input = document.getElementById('player-action-input');
-            const actionText = input.value.trim();
-            if (!actionText) return;
-
-            input.value = '';
-
-            const playerMsg = {
-                sender: state.player.character ? state.player.character.name : state.player.name,
-                text: actionText,
-                type: 'player',
-                timestamp: Date.now()
-            };
-
-            const updatedMessages = [...(state.lobbyData.messages || []), playerMsg];
-
-            state.lobbyData.messages = updatedMessages;
-            renderGameUI();
-
-            try {
-                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
-                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                    await window.updateDoc(lobbyRef, { messages: updatedMessages });
-                }
-            } catch (err) {}
-
-            // Trigger AI DM Response
-            triggerAiDmResponse(updatedMessages);
-        }
-
-        async function triggerAiDmResponse(currentMessages) {
-            const typingIndicator = document.getElementById('ai-typing');
-            if (typingIndicator) typingIndicator.classList.remove('hidden');
-
-            try {
-                // Obtenemos la API Key del input, de localStorage o del prompt si no existe
-                const inputKey = document.getElementById('input-api-key')?.value.trim();
-                let savedKey = localStorage.getItem('dnd_gemini_api_key');
-                let apiKey = inputKey || savedKey || (typeof __google_api_key !== 'undefined' ? __google_api_key : "");
-
-                if (!apiKey) {
-                    apiKey = prompt("Para que el DM de IA pueda narrar, ingresa tu clave gratuita de Google AI Studio (Gemini):");
-                    if (apiKey) {
-                        apiKey = apiKey.trim();
-                        localStorage.setItem('dnd_gemini_api_key', apiKey);
-                        const keyInput = document.getElementById('input-api-key');
-                        if (keyInput) keyInput.value = apiKey;
-                    } else {
-                        throw new Error("Se requiere una Clave API de Gemini para recibir respuesta del DM de IA.");
-                    }
-                }
-
-                const systemPrompt = `
-Eres un Dungeon Master (DM) profesional de Dungeons & Dragons 5a Edición. 
-Tu trabajo es narrar la historia de forma envolvente, épica e inmersiva en español, interpretar a los NPCs, solicitar tiradas de dados (d20 + modificadores) cuando sea necesario, y reaccionar a las decisiones libres de los jugadores.
-
-ESTADO DE LA PARTIDA Y GRUPO DE AVENTUREROS:
-${JSON.stringify(state.lobbyData.players, null, 2)}
-
-RESUMEN DE CAMPAÑA:
-${state.lobbyData.campaignContext ? state.lobbyData.campaignContext.summary : 'La aventura acaba de comenzar a las afueras de Phandalin.'}
-
-REGLAS DE RESPUESTA:
-1. Narra en un estilo evocador de fantasía medieval de D&D.
-2. Si un jugador intenta una acción incierta o difícil, pídeles explícitamente una prueba de habilidad (ej: "Lanza un d20 de Sigilo").
-3. Mantén la coherencia con los acontecimientos anteriores.
-4. No extiendas tus narraciones en exceso (máximo 2 o 3 párrafos concisos por turno para fluidez).
-5. No tomes decisiones por los personajes de los jugadores.
-`;
-
-                const recentHistory = currentMessages.slice(-8).map(m => `${m.sender}: ${m.text}`).join('\n');
-                const userQuery = `Historial reciente de la mesa:\n${recentHistory}\n\nGenera la narración y respuesta del Dungeon Master para el turno actual:`;
-
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-                const payload = {
-                    contents: [{ parts: [{ text: userQuery }] }],
-                    systemInstruction: { parts: [{ text: systemPrompt }] }
-                };
-
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const result = await response.json();
-                
-                let aiText = "";
-                if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
-                    aiText = result.candidates[0].content.parts[0].text;
-                } else if (result.error) {
-                    aiText = `⚠️ *[Error de la API de la IA]*: ${result.error.message}. Comprueba que la clave ingresada sea correcta.`;
-                } else {
-                    aiText = "El Dungeon Master observa detenidamente al grupo antes de continuar la narración...";
-                }
-
-                const dmMsg = {
-                    sender: 'DM (IA)',
-                    text: aiText,
-                    type: 'dm',
-                    timestamp: Date.now()
-                };
-
-                const finalMessages = [...currentMessages, dmMsg];
-                state.lobbyData.messages = finalMessages;
-                renderGameUI();
-
-                try {
-                    if (window.db && window.doc && window.updateDoc && state.lobbyId) {
-                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                        await window.updateDoc(lobbyRef, { messages: finalMessages });
-                    }
-                } catch(e) {}
-
-            } catch (err) {
-                console.error("Error al comunicarse con la IA Dungeon Master:", err);
-                const errorMsg = {
-                    sender: 'DM (IA)',
-                    text: `⚠️ *[Nota de la Mesa]*: ${err.message}`,
-                    type: 'dm',
-                    timestamp: Date.now()
-                };
-                state.lobbyData.messages = [...currentMessages, errorMsg];
-                renderGameUI();
-            } finally {
-                if (typingIndicator) typingIndicator.classList.add('hidden');
-            }
-        }
-
-        // MODAL MANAGEMENT
-        function toggleSheetModal() {
-            const modal = document.getElementById('modal-sheet');
-            const content = document.getElementById('modal-char-content');
-            const c = state.player.character;
-
-            if (!c) {
-                alert('No has creado tu personaje todavía.');
-                return;
-            }
-
-            if (modal.classList.contains('hidden')) {
-                content.innerHTML = `
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <p><strong>Raza:</strong> ${c.race}</p>
-                            <p><strong>Clase:</strong> ${c.class} (Nivel ${c.level})</p>
-                            <p><strong>Trasfondo:</strong> ${c.background}</p>
-                            <p><strong>Alineamiento:</strong> ${c.alignment}</p>
-                        </div>
-                        <div>
-                            <p><strong>Puntos de Vida:</strong> ${c.hp} / ${c.maxHp}</p>
-                            <p><strong>Clase de Armadura:</strong> ${c.ac}</p>
-                        </div>
-                    </div>
-                    <div class="border-t border-gray-800 pt-3">
-                        <h4 class="font-bold text-dnd-gold mb-2">Atributos</h4>
-                        <div class="grid grid-cols-6 gap-2 text-center">
-                            <div class="bg-black/40 p-2 rounded">FUE<br><strong>${c.stats.str}</strong></div>
-                            <div class="bg-black/40 p-2 rounded">DES<br><strong>${c.stats.dex}</strong></div>
-                            <div class="bg-black/40 p-2 rounded">CON<br><strong>${c.stats.con}</strong></div>
-                            <div class="bg-black/40 p-2 rounded">INT<br><strong>${c.stats.int}</strong></div>
-                            <div class="bg-black/40 p-2 rounded">SAB<br><strong>${c.stats.wis}</strong></div>
-                            <div class="bg-black/40 p-2 rounded">CAR<br><strong>${c.stats.cha}</strong></div>
-                        </div>
-                    </div>
-                    <div class="border-t border-gray-800 pt-3">
-                        <h4 class="font-bold text-dnd-gold mb-1">Historia Personal</h4>
-                        <p class="text-xs text-gray-300 italic">${c.backstory || 'Sin historia previa declarada.'}</p>
-                    </div>
-                `;
-                modal.classList.remove('hidden');
-            } else {
-                modal.classList.add('hidden');
-            }
-        }
-    </script>
-</body>
-</html>
+<!-- ... existing code -->
