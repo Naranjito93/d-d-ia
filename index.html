@@ -729,7 +729,7 @@
 
                 state.player.character = character;
 
-                // Actualizar jugadores en el estado
+                // Actualizar jugadores en el estado local
                 if (!state.lobbyData.players) state.lobbyData.players = {};
                 state.lobbyData.players[state.player.id] = {
                     id: state.player.id,
@@ -737,21 +737,22 @@
                     character: character
                 };
 
-                // Intentar sincronizar a la nube si está habilitado
-                try {
-                    if (window.db && window.doc && window.updateDoc && state.lobbyId) {
-                        const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
-                        await window.updateDoc(lobbyRef, { players: state.lobbyData.players });
-                    }
-                } catch(e) {
-                    console.warn("Actualización de jugador guardada localmente.");
-                }
-
+                // CAMBIO DE PANTALLA INMEDIATO AL JUEGO (Garantizado)
                 showScreen('screen-game');
                 renderGameUI();
+
+                // Intentar sincronizar a la nube en segundo plano (no bloqueante)
+                if (window.db && window.doc && window.updateDoc && state.lobbyId) {
+                    const lobbyRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'lobbies', state.lobbyId);
+                    window.updateDoc(lobbyRef, { players: state.lobbyData.players }).catch(e => {
+                        console.warn("Actualización de jugador guardada únicamente en memoria local.");
+                    });
+                }
             } catch (err) {
                 console.error("Error al guardar personaje:", err);
+                // Garantizar entrada al juego incluso con errores
                 showScreen('screen-game');
+                renderGameUI();
             }
         }
 
